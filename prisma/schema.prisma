@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth ───────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  games         Game[]
+  chatMessages  ChatMessage[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ─── Domain: Game ───────────────────────────────────────────────
+
+enum GameFormat {
+  CHAMBER
+  FIELD
+}
+
+enum GameStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Game {
+  id          String     @id @default(cuid())
+  name        String
+  genre       String?
+  setting     String?    @db.Text
+  format      GameFormat @default(CHAMBER)
+  playerCount Int?
+  status      GameStatus @default(DRAFT)
+  dates       String?
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  designDocSummary String? @db.Text
+
+  characters    GameEntity[]
+  relationships Relationship[]
+  plotlines     Plotline[]
+  files         GameFile[]
+  chatMessages  ChatMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Scalability: future team_members table
+  // members GameMember[]
+}
+
+// ─── Domain: Characters & NPCs ──────────────────────────────────
+
+enum EntityType {
+  CHARACTER
+  NPC
+}
+
+enum EntityStatus {
+  DRAFT
+  IN_PROGRESS
+  READY
+}
+
+model GameEntity {
+  id          String       @id @default(cuid())
+  type        EntityType   @default(CHARACTER)
+  name        String
+  faction     String?
+  archetype   String?
+  description String?      @db.Text
+  status      EntityStatus @default(DRAFT)
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  briefVersions    BriefVersion[]
+  plotlineEntities PlotlineEntity[]
+
+  relationshipsFrom Relationship[] @relation("fromEntity")
+  relationshipsTo   Relationship[] @relation("toEntity")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+}
+
+// ─── Domain: Relationships (edges) ──────────────────────────────
+
+enum RelationshipType {
+  RIVALRY
+  ALLIANCE
+  SECRET
+  DEBT
+  LOVE
+  FAMILY
+  MENTORSHIP
+  ENMITY
+  OTHER
+}
+
+model Relationship {
+  id            String           @id @default(cuid())
+  type          RelationshipType @default(OTHER)
+  description   String?          @db.Text
+  intensity     Int              @default(5) // 1-10
+  bidirectional Boolean          @default(true)
+
+  fromEntityId String
+  fromEntity   GameEntity @relation("fromEntity", fields: [fromEntityId], references: [id], onDelete: Cascade)
+
+  toEntityId String
+  toEntity   GameEntity @relation("toEntity", fields: [toEntityId], references: [id], onDelete: Cascade)
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  plotlineId String?
+  plotline   Plotline? @relation(fields: [plotlineId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+  @@index([fromEntityId])
+  @@index([toEntityId])
+}
+
+// ─── Domain: Plotlines ──────────────────────────────────────────
+
+enum PlotlineType {
+  POLITICAL
+  PERSONAL
+  MYSTERY
+  ACTION
+  SOCIAL
+  OTHER
+}
+
+enum PlotlineStatus {
+  DRAFT
+  ACTIVE
+  RESOLVED
+}
+
+model Plotline {
+  id          String         @id @default(cuid())
+  name        String
+  type        PlotlineType   @default(OTHER)
+  description String?        @db.Text
+  status      PlotlineStatus @default(DRAFT)
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  entities      PlotlineEntity[]
+  relationships Relationship[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+}
+
+model PlotlineEntity {
+  id         String @id @default(cuid())
+  plotlineId String
+  plotline   Plotline    @relation(fields: [plotlineId], references: [id], onDelete: Cascade)
+  entityId   String
+  entity     GameEntity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  role       String?
+
+  @@unique([plotlineId, entityId])
+}
+
+// ─── Domain: Briefs ─────────────────────────────────────────────
+
+enum BriefStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+}
+
+model BriefVersion {
+  id       String      @id @default(cuid())
+  version  Int         @default(1)
+  status   BriefStatus @default(DRAFT)
+
+  backstory     String? @db.Text
+  personality   String? @db.Text
+  goalsPublic   String? @db.Text
+  goalsSecret   String? @db.Text
+  relationships String? @db.Text
+  mechanics     String? @db.Text
+  contacts      String? @db.Text
+  fullText      String? @db.Text
+
+  entityId String
+  entity   GameEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([entityId])
+  @@unique([entityId, version])
+}
+
+// ─── Domain: Files ──────────────────────────────────────────────
+
+enum FileCategory {
+  DESIGN_DOC
+  RULESET
+  REFERENCE
+  EXPORT
+}
+
+model GameFile {
+  id       String       @id @default(cuid())
+  name     String
+  url      String
+  mimeType String?
+  size     Int?
+  category FileCategory @default(REFERENCE)
+
+  extractedText String? @db.Text
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}
+
+// ─── Domain: Chat ───────────────────────────────────────────────
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model ChatMessage {
+  id      String   @id @default(cuid())
+  role    ChatRole
+  content String   @db.Text
+
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}

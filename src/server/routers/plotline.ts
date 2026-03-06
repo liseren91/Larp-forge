@@ -1,0 +1,84 @@
+import { z } from "zod";
+import { router, protectedProcedure } from "../trpc";
+
+export const plotlineRouter = router({
+  list: protectedProcedure
+    .input(z.object({ gameId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.plotline.findMany({
+        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        include: {
+          entities: { include: { entity: true } },
+          _count: { select: { entities: true, relationships: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+    }),
+
+  create: protectedProcedure
+    .input(
+      z.object({
+        gameId: z.string(),
+        name: z.string().min(1).max(200),
+        type: z.enum(["POLITICAL", "PERSONAL", "MYSTERY", "ACTION", "SOCIAL", "OTHER"]).default("OTHER"),
+        description: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.game.findFirstOrThrow({
+        where: { id: input.gameId, ownerId: ctx.session.user.id },
+      });
+      return ctx.db.plotline.create({ data: input });
+    }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).max(200).optional(),
+        type: z.enum(["POLITICAL", "PERSONAL", "MYSTERY", "ACTION", "SOCIAL", "OTHER"]).optional(),
+        description: z.string().optional(),
+        status: z.enum(["DRAFT", "ACTIVE", "RESOLVED"]).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      return ctx.db.plotline.update({
+        where: { id, game: { ownerId: ctx.session.user.id } },
+        data,
+      });
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.plotline.delete({
+        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+      });
+    }),
+
+  assignEntity: protectedProcedure
+    .input(
+      z.object({
+        plotlineId: z.string(),
+        entityId: z.string(),
+        role: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.plotlineEntity.create({ data: input });
+    }),
+
+  removeEntity: protectedProcedure
+    .input(z.object({ plotlineId: z.string(), entityId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.plotlineEntity.delete({
+        where: {
+          plotlineId_entityId: {
+            plotlineId: input.plotlineId,
+            entityId: input.entityId,
+          },
+        },
+      });
+    }),
+});
