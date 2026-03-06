@@ -2,19 +2,36 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
-const connectionString = process.env.DATABASE_URL;
+const MISSING_DB_URL_ERROR = "DATABASE_URL is required to initialize PrismaClient";
 
-if (!connectionString) {
-  throw new Error("DATABASE_URL is required to initialize PrismaClient");
-}
+function createPrismaClient(): PrismaClient {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(MISSING_DB_URL_ERROR);
+  }
 
-const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg({ connectionString });
 
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+  return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["query"] : [],
   });
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+function getPrismaClient(): PrismaClient {
+  if (process.env.NODE_ENV === "production") {
+    return createPrismaClient();
+  }
+
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient();
+  }
+
+  return globalForPrisma.prisma;
+}
+
+export const db = new Proxy({} as PrismaClient, {
+  get(_target, property, receiver) {
+    return Reflect.get(getPrismaClient() as unknown as object, property, receiver);
+  },
+});
