@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getProviders, signIn, useSession, type ClientSafeProvider } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Flame } from "lucide-react";
 
 export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInLoading />}>
+      <SignInPageContent />
+    </Suspense>
+  );
+}
+
+function SignInPageContent() {
   const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const [providers, setProviders] = useState<Record<string, ClientSafeProvider>>({});
@@ -28,11 +36,7 @@ export default function SignInPage() {
   const hasEmail = Boolean(providers.email);
 
   if (status === "loading") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-      </div>
-    );
+    return <SignInLoading />;
   }
 
   return (
@@ -103,6 +107,14 @@ export default function SignInPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SignInLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
     </div>
   );
 }

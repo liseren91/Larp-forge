@@ -28,7 +28,6 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db) as NextAuthOptions["adapter"],
   providers,
   session: { strategy: "jwt" },
-  trustHost: true,
   callbacks: {
     signIn({ user }) {
       if (process.env.NODE_ENV === "development") {
