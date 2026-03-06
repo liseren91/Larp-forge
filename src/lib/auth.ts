@@ -28,7 +28,14 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db) as NextAuthOptions["adapter"],
   providers,
   session: { strategy: "jwt" },
+  trustHost: true,
   callbacks: {
+    signIn({ user }) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[auth] signIn callback", user?.id, user?.email);
+      }
+      return true;
+    },
     session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
@@ -45,4 +52,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
+  debug: process.env.NODE_ENV === "development",
 };
