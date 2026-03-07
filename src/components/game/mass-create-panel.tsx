@@ -119,8 +119,13 @@ export function MassCreatePanel({ open, onClose, gameId, onCreated }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Mass Create Characters">
-      <div className="min-w-[700px]">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Mass Create Characters"
+      className="max-w-[min(1100px,calc(100vw-2rem))]"
+    >
+      <div className="min-w-0">
         <div className="flex gap-1 mb-4 border-b border-zinc-800 pb-2">
           <button
             onClick={() => setTab("ai")}
