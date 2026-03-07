@@ -12,6 +12,7 @@ import { customFieldsRouter } from "./custom-fields";
 import { subRolesRouter } from "./sub-roles";
 import { plotlineMatrixRouter } from "./plotline-matrix";
 import { briefPipelineRouter } from "./brief-pipeline";
+import { csvRouter } from "./csv";
 
 export const appRouter = router({
   game: gameRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   subRoles: subRolesRouter,
   plotlineMatrix: plotlineMatrixRouter,
   briefPipeline: briefPipelineRouter,
+  csv: csvRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AiInput } from "@/components/ui/ai-input";
 import { AiTextarea } from "@/components/ui/ai-textarea";
-import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen } from "lucide-react";
+import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen, FileSpreadsheet } from "lucide-react";
 import { CharacterDetail } from "@/components/game/character-detail";
 import { MassCreatePanel } from "@/components/game/mass-create-panel";
 import { StoryImportPanel } from "@/components/game/story-import-panel";
+import { CsvPanel } from "@/components/game/csv-panel";
 
 type NewCharacter = {
   name: string;
@@ -31,6 +32,7 @@ export default function CharactersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showMassCreate, setShowMassCreate] = useState(false);
   const [showStoryImport, setShowStoryImport] = useState(false);
+  const [showCsv, setShowCsv] = useState(false);
   const [newChar, setNewChar] = useState<NewCharacter>(emptyChar);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -80,6 +82,9 @@ export default function CharactersPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setShowStoryImport(true)}>
                 <BookOpen size={14} className="mr-1" /> Import
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowCsv(true)}>
+                <FileSpreadsheet size={14} className="mr-1" /> CSV
               </Button>
             </div>
           </div>
@@ -173,6 +178,13 @@ export default function CharactersPage() {
         onClose={() => setShowStoryImport(false)}
         gameId={gameId}
         onCreated={() => characters.refetch()}
+      />
+
+      <CsvPanel
+        open={showCsv}
+        onClose={() => setShowCsv(false)}
+        gameId={gameId}
+        onImported={() => characters.refetch()}
       />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Character">
