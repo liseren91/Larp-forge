@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AiInput } from "@/components/ui/ai-input";
 import { AiTextarea } from "@/components/ui/ai-textarea";
-import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound } from "lucide-react";
+import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen } from "lucide-react";
 import { CharacterDetail } from "@/components/game/character-detail";
 import { MassCreatePanel } from "@/components/game/mass-create-panel";
+import { StoryImportPanel } from "@/components/game/story-import-panel";
 
 type NewCharacter = {
   name: string;
@@ -29,6 +30,7 @@ export default function CharactersPage() {
   const { gameId } = useParams() as { gameId: string };
   const [showCreate, setShowCreate] = useState(false);
   const [showMassCreate, setShowMassCreate] = useState(false);
+  const [showStoryImport, setShowStoryImport] = useState(false);
   const [newChar, setNewChar] = useState<NewCharacter>(emptyChar);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -75,6 +77,9 @@ export default function CharactersPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={() => setShowMassCreate(true)}>
                 <UsersRound size={14} className="mr-1" /> Mass
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowStoryImport(true)}>
+                <BookOpen size={14} className="mr-1" /> Import
               </Button>
             </div>
           </div>
@@ -159,6 +164,13 @@ export default function CharactersPage() {
       <MassCreatePanel
         open={showMassCreate}
         onClose={() => setShowMassCreate(false)}
+        gameId={gameId}
+        onCreated={() => characters.refetch()}
+      />
+
+      <StoryImportPanel
+        open={showStoryImport}
+        onClose={() => setShowStoryImport(false)}
         gameId={gameId}
         onCreated={() => characters.refetch()}
       />
