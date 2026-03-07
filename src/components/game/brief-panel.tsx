@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { AiTextarea } from "@/components/ui/ai-textarea";
 import { Sparkles, Save, RotateCcw, CheckCircle, Clock, ChevronDown, ChevronUp, Download } from "lucide-react";
 
 interface Props {
@@ -185,10 +185,15 @@ export function BriefPanel({ entityId, gameId }: Props) {
                 </button>
                 {isExpanded && (
                   <div className="border-t border-zinc-800 p-3">
-                    <Textarea
+                    <AiTextarea
+                      gameId={gameId}
+                      fieldName={`brief ${label}`}
                       value={editedSections[key] ?? value ?? ""}
                       onChange={(e) =>
                         setEditedSections((prev) => ({ ...prev, [key]: e.target.value }))
+                      }
+                      onValueChange={(v) =>
+                        setEditedSections((prev) => ({ ...prev, [key]: v }))
                       }
                       rows={5}
                       className="mb-2"

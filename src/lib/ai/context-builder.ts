@@ -26,6 +26,12 @@ export interface GameContext {
     description: string | null;
     characters: string[];
   }>;
+  documents: Array<{
+    name: string;
+    category: string;
+    description: string | null;
+    extractedText: string | null;
+  }>;
 }
 
 export async function buildGameContext(gameId: string): Promise<GameContext> {
@@ -38,6 +44,10 @@ export async function buildGameContext(gameId: string): Promise<GameContext> {
       },
       plotlines: {
         include: { entities: { include: { entity: true } } },
+      },
+      files: {
+        where: { extractedText: { not: null } },
+        select: { name: true, category: true, description: true, extractedText: true },
       },
     },
   });
@@ -69,6 +79,12 @@ export async function buildGameContext(gameId: string): Promise<GameContext> {
       type: p.type,
       description: p.description,
       characters: p.entities.map((e) => e.entity.name),
+    })),
+    documents: game.files.map((f) => ({
+      name: f.name,
+      category: f.category,
+      description: f.description,
+      extractedText: f.extractedText,
     })),
   };
 }

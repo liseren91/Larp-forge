@@ -49,6 +49,29 @@ export const characterRouter = router({
       return ctx.db.gameEntity.create({ data: input });
     }),
 
+  createMany: protectedProcedure
+    .input(
+      z.object({
+        gameId: z.string(),
+        characters: z.array(
+          z.object({
+            name: z.string().min(1).max(200),
+            type: z.enum(["CHARACTER", "NPC"]).default("CHARACTER"),
+            faction: z.string().optional(),
+            archetype: z.string().optional(),
+            description: z.string().optional(),
+          })
+        ).min(1).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.game.findFirstOrThrow({
+        where: { id: input.gameId, ownerId: ctx.session.user.id },
+      });
+      const data = input.characters.map((c) => ({ ...c, gameId: input.gameId }));
+      return ctx.db.gameEntity.createMany({ data });
+    }),
+
   update: protectedProcedure
     .input(
       z.object({

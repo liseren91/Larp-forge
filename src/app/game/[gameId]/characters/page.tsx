@@ -5,13 +5,16 @@ import { useParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Plus, Users, Pencil, Trash2, Link2, Sparkles } from "lucide-react";
+import { AiInput } from "@/components/ui/ai-input";
+import { AiTextarea } from "@/components/ui/ai-textarea";
+import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen } from "lucide-react";
 import { CharacterDetail } from "@/components/game/character-detail";
+import { MassCreatePanel } from "@/components/game/mass-create-panel";
+import { StoryImportPanel } from "@/components/game/story-import-panel";
 
 type NewCharacter = {
   name: string;
@@ -26,6 +29,8 @@ const emptyChar: NewCharacter = { name: "", type: "CHARACTER", faction: "", arch
 export default function CharactersPage() {
   const { gameId } = useParams() as { gameId: string };
   const [showCreate, setShowCreate] = useState(false);
+  const [showMassCreate, setShowMassCreate] = useState(false);
+  const [showStoryImport, setShowStoryImport] = useState(false);
   const [newChar, setNewChar] = useState<NewCharacter>(emptyChar);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -66,9 +71,17 @@ export default function CharactersPage() {
         <div className="border-b border-zinc-800 p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Characters</h2>
-            <Button size="sm" onClick={() => setShowCreate(true)}>
-              <Plus size={14} className="mr-1" /> Add
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} className="mr-1" /> Add
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowMassCreate(true)}>
+                <UsersRound size={14} className="mr-1" /> Mass
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setShowStoryImport(true)}>
+                <BookOpen size={14} className="mr-1" /> Import
+              </Button>
+            </div>
           </div>
           <Input
             placeholder="Filter by name, faction..."
@@ -148,6 +161,20 @@ export default function CharactersPage() {
         )}
       </div>
 
+      <MassCreatePanel
+        open={showMassCreate}
+        onClose={() => setShowMassCreate(false)}
+        gameId={gameId}
+        onCreated={() => characters.refetch()}
+      />
+
+      <StoryImportPanel
+        open={showStoryImport}
+        onClose={() => setShowStoryImport(false)}
+        gameId={gameId}
+        onCreated={() => characters.refetch()}
+      />
+
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Character">
         <form
           onSubmit={(e) => {
@@ -187,17 +214,23 @@ export default function CharactersPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm text-zinc-400">Archetype</label>
-            <Input
+            <AiInput
+              gameId={gameId}
+              fieldName="archetype"
               value={newChar.archetype}
               onChange={(e) => setNewChar((p) => ({ ...p, archetype: e.target.value }))}
+              onValueChange={(v) => setNewChar((p) => ({ ...p, archetype: v }))}
               placeholder="e.g. Manipulative Elder"
             />
           </div>
           <div>
             <label className="mb-1 block text-sm text-zinc-400">Description</label>
-            <Textarea
+            <AiTextarea
+              gameId={gameId}
+              fieldName="character description"
               value={newChar.description}
               onChange={(e) => setNewChar((p) => ({ ...p, description: e.target.value }))}
+              onValueChange={(v) => setNewChar((p) => ({ ...p, description: v }))}
               placeholder="Brief description of the character's role in the game..."
               rows={3}
             />
