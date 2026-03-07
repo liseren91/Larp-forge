@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AiTextarea } from "@/components/ui/ai-textarea";
-import { Plus, GitBranch, Users, Trash2, UserPlus, BookOpen, FileUp } from "lucide-react";
+import { Plus, GitBranch, Users, Trash2, UserPlus, BookOpen, FileUp, UserCheck } from "lucide-react";
 import { PlotlineImportPanel } from "@/components/game/plotline-import-panel";
 import { PlotlinesFromDocPanel } from "@/components/game/plotlines-from-doc-panel";
 
@@ -28,6 +28,10 @@ export default function PlotlinesPage() {
   const { gameId } = useParams() as { gameId: string };
   const [showCreate, setShowCreate] = useState(false);
   const [showAssign, setShowAssign] = useState<string | null>(null);
+  const [showRecommend, setShowRecommend] = useState<string | null>(null);
+  const [recommendSelected, setRecommendSelected] = useState<Set<string>>(new Set());
+  const [recommendLoading, setRecommendLoading] = useState(false);
+  const [recommendReasoning, setRecommendReasoning] = useState<string | null>(null);
   const [showDocImport, setShowDocImport] = useState<{ id: string; name: string } | null>(null);
   const [showPlotlinesImport, setShowPlotlinesImport] = useState(false);
   const [assignEntityId, setAssignEntityId] = useState("");
@@ -51,6 +55,13 @@ export default function PlotlinesPage() {
     },
   });
   const removeEntity = trpc.plotline.removeEntity.useMutation({ onSuccess: () => plotlines.refetch() });
+  const assignEntities = trpc.plotline.assignEntities.useMutation({
+    onSuccess: (res) => {
+      setShowRecommend(null);
+      setRecommendSelected(new Set());
+      plotlines.refetch();
+    },
+  });
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
@@ -129,6 +140,14 @@ export default function PlotlinesPage() {
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowAssign(pl.id)}>
                   <UserPlus size={14} />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowRecommend(pl.id)}
+                  title="Рекомендовать PC и NPC из списка персонажей"
+                >
+                  <UserCheck size={14} className="mr-1" /> Рекомендовать
                 </Button>
                 <Button
                   size="sm"
@@ -252,6 +271,116 @@ export default function PlotlinesPage() {
           </div>
         </form>
       </Modal>
+
+      {showRecommend && (() => {
+        const pl = plotlines.data?.find((p) => p.id === showRecommend);
+        const assignedIds = new Set(pl?.entities.map((e) => e.entity.id) ?? []);
+        const available = (characters.data ?? []).filter((c) => !assignedIds.has(c.id));
+        const toggle = (id: string) => {
+          setRecommendSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+          });
+        };
+        const selectAll = () => setRecommendSelected(new Set(available.map((c) => c.id)));
+        const clearAll = () => setRecommendSelected(new Set());
+        return (
+          <Modal
+            open
+            onClose={() => { setShowRecommend(null); setRecommendSelected(new Set()); setRecommendReasoning(null); }}
+            title="Рекомендовать PC и NPC из списка персонажей"
+          >
+            <p className="text-sm text-zinc-400 mb-3">
+              Получите рекомендации ИИ или выберите персонажей вручную для сюжета «{pl?.name}». Уже добавленные не показываются.
+            </p>
+            {available.length === 0 ? (
+              <p className="text-sm text-zinc-500 py-4">Все персонажи уже добавлены в этот сюжет.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={recommendLoading}
+                    onClick={async () => {
+                      if (!showRecommend) return;
+                      setRecommendLoading(true);
+                      setRecommendReasoning(null);
+                      try {
+                        const res = await fetch("/api/ai/recommend-plotline-characters", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ gameId, plotlineId: showRecommend }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Request failed");
+                        if (Array.isArray(data.recommendedIds) && data.recommendedIds.length > 0) {
+                          setRecommendSelected(new Set(data.recommendedIds));
+                        }
+                        if (typeof data.reasoning === "string") {
+                          setRecommendReasoning(data.reasoning);
+                        }
+                      } catch (e) {
+                        setRecommendReasoning(e instanceof Error ? e.message : "Ошибка запроса к ИИ");
+                      } finally {
+                        setRecommendLoading(false);
+                      }
+                    }}
+                  >
+                    {recommendLoading ? "Рекомендации ИИ…" : "Получить рекомендации ИИ"}
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={selectAll}>Выбрать всех</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={clearAll}>Сбросить</Button>
+                </div>
+                {recommendReasoning && (
+                  <div className="mb-3 rounded-md bg-zinc-800/80 border border-zinc-700 px-3 py-2 text-sm text-zinc-300">
+                    <span className="font-medium text-zinc-400">ИИ: </span>
+                    {recommendReasoning}
+                  </div>
+                )}
+                <div className="max-h-64 overflow-y-auto space-y-2 mb-4 rounded-md border border-zinc-800 p-2">
+                  {available.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2 cursor-pointer rounded px-2 py-1.5 hover:bg-zinc-800/50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={recommendSelected.has(c.id)}
+                        onChange={() => toggle(c.id)}
+                        className="rounded border-zinc-600"
+                      />
+                      <span className="flex-1">{c.name}</span>
+                      {c.faction && <span className="text-xs text-zinc-500">({c.faction})</span>}
+                      <Badge color={c.type === "NPC" ? "amber" : "blue"} className="text-[10px]">
+                        {c.type === "NPC" ? "NPC" : "PC"}
+                      </Badge>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="ghost" onClick={() => { setShowRecommend(null); setRecommendSelected(new Set()); }}>
+                    Отмена
+                  </Button>
+                  <Button
+                    disabled={recommendSelected.size === 0 || assignEntities.isPending}
+                    onClick={() => {
+                      if (showRecommend && recommendSelected.size > 0) {
+                        assignEntities.mutate({ plotlineId: showRecommend, entityIds: Array.from(recommendSelected) });
+                      }
+                    }}
+                  >
+                    {assignEntities.isPending ? "Добавление…" : `Добавить выбранных (${recommendSelected.size})`}
+                  </Button>
+                </div>
+              </>
+            )}
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
