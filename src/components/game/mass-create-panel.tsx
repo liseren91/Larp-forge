@@ -201,7 +201,7 @@ export function MassCreatePanel({ open, onClose, gameId, onCreated }: Props) {
                       />
                     </th>
                     <th className="pb-2 pr-2">Name</th>
-                    <th className="pb-2 pr-2 w-24">Type</th>
+                    <th className="pb-2 pr-2 w-38">Type</th>
                     <th className="pb-2 pr-2">Faction</th>
                     <th className="pb-2 pr-2">Archetype</th>
                     <th className="pb-2 pr-2">Description</th>
@@ -227,11 +227,11 @@ export function MassCreatePanel({ open, onClose, gameId, onCreated }: Props) {
                           className="h-7 text-xs"
                         />
                       </td>
-                      <td className="py-1.5 pr-2">
+                      <td className="py-1.5 pr-2 min-w-[112px]">
                         <Select
                           value={row.type}
                           onChange={(e) => updateRow(row.id, "type", e.target.value)}
-                          className="h-7 text-xs"
+                          className="h-8 min-w-[112px] text-sm font-medium"
                         >
                           <option value="CHARACTER">PC</option>
                           <option value="NPC">NPC</option>
