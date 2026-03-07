@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { jsonrepair } from "jsonrepair";
 import { authOptions } from "@/lib/auth";
 import { buildGameContext } from "@/lib/ai/context-builder";
 import { SYSTEM_PROMPT_EXTRACT_STORY_GRAPH } from "@/lib/ai/prompts";
@@ -6,6 +7,39 @@ import { chatCompletion } from "@/lib/ai/llm-client";
 import { db } from "@/lib/db";
 
 const MAX_TEXT_LENGTH = 30_000;
+
+function extractAndParseJson(response: string): { characters: unknown[]; relationships: unknown[] } {
+  let raw = response.trim();
+
+  // Extract from markdown code block if present
+  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    raw = codeBlockMatch[1].trim();
+  }
+
+  // Find JSON object
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON object found in AI response");
+  }
+
+  let parsed: { characters?: unknown[]; relationships?: unknown[] };
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    try {
+      parsed = JSON.parse(jsonrepair(jsonMatch[0]));
+    } catch (repairErr: unknown) {
+      const msg = repairErr instanceof Error ? repairErr.message : "Invalid JSON";
+      throw new Error(`Failed to parse AI response: ${msg}`);
+    }
+  }
+
+  return {
+    characters: Array.isArray(parsed.characters) ? parsed.characters : [],
+    relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
+  };
+}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -57,11 +91,12 @@ export async function POST(req: Request) {
         ).join("\n")
       : "No existing relationships.";
 
-    const response = await chatCompletion([
-      { role: "system", content: SYSTEM_PROMPT_EXTRACT_STORY_GRAPH },
-      {
-        role: "user",
-        content: `## Game
+    const response = await chatCompletion(
+      [
+        { role: "system", content: SYSTEM_PROMPT_EXTRACT_STORY_GRAPH },
+        {
+          role: "user",
+          content: `## Game
 ${context.gameSummary}
 
 ## Existing Characters
@@ -74,23 +109,12 @@ ${existingRelationships}
 ${truncated}
 
 Extract all characters and relationships from the story document above. Match characters to existing ones where possible. Respond with ONLY the JSON object.`,
-      },
-    ]);
+        },
+      ],
+      { maxTokens: 8192 }
+    );
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return Response.json({ error: "Failed to parse AI response" }, { status: 500 });
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    if (!parsed.characters || !Array.isArray(parsed.characters)) {
-      parsed.characters = [];
-    }
-    if (!parsed.relationships || !Array.isArray(parsed.relationships)) {
-      parsed.relationships = [];
-    }
-
+    const parsed = extractAndParseJson(response);
     return Response.json(parsed);
   } catch (err: any) {
     console.error("Extract story graph error:", err);

@@ -24,8 +24,12 @@ function getConfig(): LLMConfig {
   throw new Error("No LLM API key configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.");
 }
 
-export async function chatCompletion(messages: Message[]): Promise<string> {
+export async function chatCompletion(
+  messages: Message[],
+  options?: { maxTokens?: number }
+): Promise<string> {
   const config = getConfig();
+  const maxTokens = options?.maxTokens ?? 4096;
 
   if (config.provider === "anthropic") {
     const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
@@ -40,7 +44,7 @@ export async function chatCompletion(messages: Message[]): Promise<string> {
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: 4096,
+        max_tokens: maxTokens,
         system: systemMsg,
         messages: nonSystem.map((m) => ({ role: m.role, content: m.content })),
       }),
@@ -64,7 +68,7 @@ export async function chatCompletion(messages: Message[]): Promise<string> {
     body: JSON.stringify({
       model: config.model,
       messages,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
     }),
   });
 

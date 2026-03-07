@@ -126,7 +126,8 @@ Guidelines:
 - Relationship typeLabel MUST be one of: RIVALRY, ALLIANCE, SECRET, DEBT, LOVE, FAMILY, MENTORSHIP, ENMITY, OTHER
 - Extract ALL meaningful relationships, not just explicit ones — infer from context
 - Support both Russian and English — respond in the language of the document
-- Respond with ONLY the JSON object, no other text`;
+- Respond with ONLY the JSON object, no other text
+- In string fields (description, evidence), escape quotes with \\ and newlines with \\n to produce valid JSON`;
 
 export const SYSTEM_PROMPT_FIELD_ASSIST = `You are LARP Forge AI — a writing assistant for LARP game design fields.
 
