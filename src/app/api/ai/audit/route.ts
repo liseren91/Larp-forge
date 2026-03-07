@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { buildGameContext } from "@/lib/ai/context-builder";
 import { SYSTEM_PROMPT_AUDIT } from "@/lib/ai/prompts";
 import { chatCompletion } from "@/lib/ai/llm-client";
+import { db } from "@/lib/db";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -17,11 +18,8 @@ export async function POST(req: Request) {
 
   try {
     const context = await buildGameContext(gameId);
-
-    // Run rule-based checks first (fast, no LLM needed)
     const findings: any[] = [];
 
-    // Isolated characters
     const relCounts = new Map<string, number>();
     context.characters.forEach((c) => relCounts.set(c.name, 0));
     context.relationships.forEach((r) => {
@@ -40,7 +38,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Characters not in any plotline
     const charsInPlotlines = new Set(context.plotlines.flatMap((p) => p.characters));
     context.characters.forEach((c) => {
       if (!charsInPlotlines.has(c.name)) {
@@ -54,7 +51,6 @@ export async function POST(req: Request) {
       }
     });
 
-    // Thin plotlines
     context.plotlines.forEach((p) => {
       if (p.characters.length < 3) {
         findings.push({
@@ -67,7 +63,6 @@ export async function POST(req: Request) {
       }
     });
 
-    // Faction imbalance
     const factionCounts = new Map<string, number>();
     context.characters.forEach((c) => {
       if (c.faction) factionCounts.set(c.faction, (factionCounts.get(c.faction) ?? 0) + 1);
@@ -89,7 +84,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Optionally enhance with LLM analysis for deeper insights
     let aiFindings: any[] = [];
     try {
       const contextStr = `
@@ -104,7 +98,7 @@ Plotlines: ${context.plotlines.map((p) => `${p.name}: ${p.characters.join(", ")}
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) aiFindings = JSON.parse(jsonMatch[0]);
     } catch {
-      // AI audit is optional; rule-based findings are sufficient
+      // AI audit is optional
     }
 
     const allFindings = [...findings, ...aiFindings];
@@ -113,7 +107,24 @@ Plotlines: ${context.plotlines.map((p) => `${p.name}: ${p.characters.join(", ")}
       return (sev[a.severity as keyof typeof sev] ?? 2) - (sev[b.severity as keyof typeof sev] ?? 2);
     });
 
-    return Response.json({ findings: allFindings });
+    const auditRun = await db.auditRun.create({
+      data: {
+        gameId,
+        summary: `${allFindings.length} issue${allFindings.length !== 1 ? "s" : ""} found (${allFindings.filter((f) => f.severity === "high").length} high, ${allFindings.filter((f) => f.severity === "medium").length} medium, ${allFindings.filter((f) => f.severity === "low").length} low)`,
+        findings: {
+          create: allFindings.map((f) => ({
+            type: f.type,
+            severity: f.severity,
+            description: f.description,
+            suggestion: f.suggestion,
+            entities: f.entities ?? [],
+          })),
+        },
+      },
+      include: { findings: true },
+    });
+
+    return Response.json({ auditRun });
   } catch (err: any) {
     console.error("Audit error:", err);
     return Response.json({ error: err.message ?? "Internal error" }, { status: 500 });

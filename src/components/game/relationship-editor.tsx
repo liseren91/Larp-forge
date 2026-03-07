@@ -4,10 +4,10 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { AiTextarea } from "@/components/ui/ai-textarea";
 import { Plus, Trash2, ArrowRight, ArrowLeftRight } from "lucide-react";
 
 const REL_TYPES = ["RIVALRY", "ALLIANCE", "SECRET", "DEBT", "LOVE", "FAMILY", "MENTORSHIP", "ENMITY", "OTHER"] as const;
@@ -169,9 +169,12 @@ export function RelationshipEditor({ characterId, gameId, relationships, current
           </div>
           <div>
             <label className="mb-1 block text-sm text-zinc-400">Description</label>
-            <Textarea
+            <AiTextarea
+              gameId={gameId}
+              fieldName="relationship description"
               value={form.description}
               onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              onValueChange={(v) => setForm((p) => ({ ...p, description: v }))}
               placeholder="Describe this relationship..."
               rows={2}
             />

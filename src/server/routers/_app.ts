@@ -5,6 +5,8 @@ import { relationshipRouter } from "./relationship";
 import { plotlineRouter } from "./plotline";
 import { briefRouter } from "./brief";
 import { chatRouter } from "./chat";
+import { fileRouter } from "./file";
+import { auditRouter } from "./audit";
 
 export const appRouter = router({
   game: gameRouter,
@@ -13,6 +15,8 @@ export const appRouter = router({
   plotline: plotlineRouter,
   brief: briefRouter,
   chat: chatRouter,
+  file: fileRouter,
+  audit: auditRouter,
 });
 
 export type AppRouter = typeof appRouter;

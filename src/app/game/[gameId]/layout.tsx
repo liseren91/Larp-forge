@@ -10,6 +10,7 @@ import {
   Users,
   Network,
   GitBranch,
+  FileText,
   MessageSquare,
   ChevronLeft,
 } from "lucide-react";
@@ -27,6 +28,7 @@ export default function GameLayout({ children }: { children: ReactNode }) {
     { href: `/game/${gameId}/characters`, label: "Characters", icon: <Users size={16} /> },
     { href: `/game/${gameId}/graph`, label: "Network Graph", icon: <Network size={16} /> },
     { href: `/game/${gameId}/plotlines`, label: "Plotlines", icon: <GitBranch size={16} /> },
+    { href: `/game/${gameId}/documents`, label: "Documents", icon: <FileText size={16} /> },
     { href: `/game/${gameId}/chat`, label: "AI Chat", icon: <MessageSquare size={16} /> },
   ];
 

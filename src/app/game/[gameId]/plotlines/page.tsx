@@ -5,11 +5,11 @@ import { useParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AiTextarea } from "@/components/ui/ai-textarea";
 import { Plus, GitBranch, Users, Trash2, UserPlus } from "lucide-react";
 
 const PLOT_TYPES = ["POLITICAL", "PERSONAL", "MYSTERY", "ACTION", "SOCIAL", "OTHER"] as const;
@@ -148,9 +148,12 @@ export default function PlotlinesPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm text-zinc-400">Description</label>
-            <Textarea
+            <AiTextarea
+              gameId={gameId}
+              fieldName="plotline description"
               value={form.description}
               onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              onValueChange={(v) => setForm((p) => ({ ...p, description: v }))}
               placeholder="Describe the plotline arc..."
               rows={3}
             />

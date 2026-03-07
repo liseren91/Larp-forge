@@ -4,10 +4,11 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { AiInput } from "@/components/ui/ai-input";
+import { AiTextarea } from "@/components/ui/ai-textarea";
 import { Pencil, Trash2, Plus, Sparkles, Link2, Save, X } from "lucide-react";
 import { RelationshipEditor } from "./relationship-editor";
 import { BriefPanel } from "./brief-panel";
@@ -154,11 +155,11 @@ export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Pro
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1 block text-sm text-zinc-400">Faction</label>
-                <Input value={form.faction} onChange={(e) => setForm((p) => ({ ...p, faction: e.target.value }))} />
+                <AiInput gameId={gameId} fieldName="faction" value={form.faction} onChange={(e) => setForm((p) => ({ ...p, faction: e.target.value }))} onValueChange={(v) => setForm((p) => ({ ...p, faction: v }))} />
               </div>
               <div>
                 <label className="mb-1 block text-sm text-zinc-400">Archetype</label>
-                <Input value={form.archetype} onChange={(e) => setForm((p) => ({ ...p, archetype: e.target.value }))} />
+                <AiInput gameId={gameId} fieldName="archetype" value={form.archetype} onChange={(e) => setForm((p) => ({ ...p, archetype: e.target.value }))} onValueChange={(v) => setForm((p) => ({ ...p, archetype: v }))} />
               </div>
             </div>
             <div>
@@ -171,7 +172,7 @@ export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Pro
             </div>
             <div>
               <label className="mb-1 block text-sm text-zinc-400">Description</label>
-              <Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={4} />
+              <AiTextarea gameId={gameId} fieldName="character description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} onValueChange={(v) => setForm((p) => ({ ...p, description: v }))} rows={4} />
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="ghost" type="button" onClick={() => setEditing(false)}>Cancel</Button>

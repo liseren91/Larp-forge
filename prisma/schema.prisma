@@ -91,6 +91,7 @@ model Game {
   plotlines     Plotline[]
   files         GameFile[]
   chatMessages  ChatMessage[]
+  auditRuns     AuditRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -266,12 +267,14 @@ enum FileCategory {
 }
 
 model GameFile {
-  id       String       @id @default(cuid())
-  name     String
-  url      String
-  mimeType String?
-  size     Int?
-  category FileCategory @default(REFERENCE)
+  id          String       @id @default(cuid())
+  name        String
+  url         String?
+  mimeType    String?
+  size        Int?
+  category    FileCategory @default(REFERENCE)
+  description String?      @db.Text
+  content     Bytes?
 
   extractedText String? @db.Text
 
@@ -281,6 +284,32 @@ model GameFile {
   createdAt DateTime @default(now())
 
   @@index([gameId])
+}
+
+// ─── Domain: Audit ──────────────────────────────────────────────
+
+model AuditRun {
+  id        String         @id @default(cuid())
+  gameId    String
+  game      Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  findings  AuditFinding[]
+  summary   String?
+  createdAt DateTime       @default(now())
+
+  @@index([gameId])
+}
+
+model AuditFinding {
+  id          String  @id @default(cuid())
+  type        String
+  severity    String
+  description String  @db.Text
+  suggestion  String  @db.Text
+  entities    String[]
+  resolved    Boolean @default(false)
+
+  auditRunId String
+  auditRun   AuditRun @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
 }
 
 // ─── Domain: Chat ───────────────────────────────────────────────

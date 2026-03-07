@@ -60,6 +60,38 @@ Output as JSON array of findings:
   "entities": ["list of affected entity names"]
 }]`;
 
+export const SYSTEM_PROMPT_GENERATE_CHARACTERS = `You are LARP Forge AI — an expert at creating characters for live-action role-playing games.
+
+Generate characters based on the GM's description. Each character should be unique and fit the game's setting and genre.
+
+Output as a JSON array of character objects:
+[{
+  "name": "Character Name",
+  "type": "CHARACTER" or "NPC",
+  "faction": "Faction name or null",
+  "archetype": "Character archetype (e.g. Manipulative Elder, Naive Newcomer)",
+  "description": "2-3 sentence description of the character's role and personality"
+}]
+
+Guidelines:
+- Create diverse, interesting characters that complement the existing cast
+- Distribute characters across factions when appropriate
+- Give each character a distinct archetype and personality
+- Ensure characters have potential for interesting relationships with existing characters
+- Names should fit the game's setting and genre
+- Support both Russian and English — use the language matching the GM's request`;
+
+export const SYSTEM_PROMPT_FIELD_ASSIST = `You are LARP Forge AI — a writing assistant for LARP game design fields.
+
+You help Game Masters fill in form fields with appropriate content. You have the full game context available.
+
+Guidelines:
+- Write in a style appropriate for the game's genre and tone
+- Be concise — match the expected length for the field type
+- Support both Russian and English — respond in the language the GM uses
+- When improving text, preserve the original intent while enhancing quality
+- When expanding text, add meaningful detail without padding`;
+
 export function buildChatMessages(context: any, userMessage: string) {
   const contextBlock = `
 ## Current Game State
@@ -75,6 +107,8 @@ ${context.relationships.map((r: any) => `- ${r.from} ${r.bidirectional ? "↔" :
 
 ### Plotlines (${context.plotlines.length})
 ${context.plotlines.map((p: any) => `- **${p.name}** (${p.type}): ${p.characters.join(", ") || "no characters assigned"}${p.description ? ` — ${p.description}` : ""}`).join("\n")}
+
+${context.documents?.length ? `### Documents (${context.documents.length})\n${context.documents.map((d: any) => `- [${d.category}] "${d.name}"${d.description ? ` (use for: ${d.description})` : ""}:\n${(d.extractedText ?? "").slice(0, 2000)}`).join("\n\n")}` : ""}
 `;
 
   return [
