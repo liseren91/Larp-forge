@@ -10,7 +10,9 @@ import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AiTextarea } from "@/components/ui/ai-textarea";
-import { Plus, GitBranch, Users, Trash2, UserPlus } from "lucide-react";
+import { Plus, GitBranch, Users, Trash2, UserPlus, BookOpen, FileUp } from "lucide-react";
+import { PlotlineImportPanel } from "@/components/game/plotline-import-panel";
+import { PlotlinesFromDocPanel } from "@/components/game/plotlines-from-doc-panel";
 
 const PLOT_TYPES = ["POLITICAL", "PERSONAL", "MYSTERY", "ACTION", "SOCIAL", "OTHER"] as const;
 const plotColorMap: Record<string, string> = {
@@ -26,6 +28,8 @@ export default function PlotlinesPage() {
   const { gameId } = useParams() as { gameId: string };
   const [showCreate, setShowCreate] = useState(false);
   const [showAssign, setShowAssign] = useState<string | null>(null);
+  const [showDocImport, setShowDocImport] = useState<{ id: string; name: string } | null>(null);
+  const [showPlotlinesImport, setShowPlotlinesImport] = useState(false);
   const [assignEntityId, setAssignEntityId] = useState("");
   const [form, setForm] = useState({ name: "", type: "OTHER" as (typeof PLOT_TYPES)[number], description: "" });
 
@@ -52,20 +56,50 @@ export default function PlotlinesPage() {
     <div className="mx-auto max-w-4xl px-6 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-bold">Plotlines</h1>
-        <Button size="sm" onClick={() => setShowCreate(true)}>
-          <Plus size={14} className="mr-1" /> New Plotline
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowPlotlinesImport(true)}
+            title="Import plotlines, characters, and relationships from a document"
+          >
+            <FileUp size={14} className="mr-1" /> Import plotlines from doc
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!plotlines.data?.length}
+            onClick={() => {
+              const first = plotlines.data?.[0];
+              if (first) setShowDocImport({ id: first.id, name: first.name });
+            }}
+            title={!plotlines.data?.length ? "Create a plotline first" : "Import characters from a document"}
+          >
+            <BookOpen size={14} className="mr-1" /> Import to plotline
+          </Button>
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} className="mr-1" /> New Plotline
+          </Button>
+        </div>
       </div>
 
       {plotlines.data?.length === 0 && (
         <EmptyState
           icon={<GitBranch size={48} />}
           title="No plotlines yet"
-          description="Create plotlines to organize narrative threads and assign characters to them."
+          description="Create plotlines manually or import them from a document with characters and relationships."
           action={
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus size={14} className="mr-1" /> Create Plotline
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus size={14} className="mr-1" /> Create Plotline
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowPlotlinesImport(true)}
+              >
+                <FileUp size={14} className="mr-1" /> Import plotlines from doc
+              </Button>
+            </div>
           }
         />
       )}
@@ -85,6 +119,14 @@ export default function PlotlinesPage() {
                 {pl.description && <p className="text-sm text-zinc-400">{pl.description}</p>}
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowDocImport({ id: pl.id, name: pl.name })}
+                  title="Import characters from document"
+                >
+                  <BookOpen size={14} className="mr-1" /> Import
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowAssign(pl.id)}>
                   <UserPlus size={14} />
                 </Button>
@@ -166,6 +208,26 @@ export default function PlotlinesPage() {
           </div>
         </form>
       </Modal>
+
+      {showPlotlinesImport && (
+        <PlotlinesFromDocPanel
+          open
+          onClose={() => setShowPlotlinesImport(false)}
+          gameId={gameId}
+          onImported={() => plotlines.refetch()}
+        />
+      )}
+
+      {showDocImport && (
+        <PlotlineImportPanel
+          open
+          onClose={() => setShowDocImport(null)}
+          gameId={gameId}
+          plotlineId={showDocImport.id}
+          plotlineName={showDocImport.name}
+          onImported={() => plotlines.refetch()}
+        />
+      )}
 
       <Modal open={!!showAssign} onClose={() => setShowAssign(null)} title="Assign Character to Plotline">
         <form
