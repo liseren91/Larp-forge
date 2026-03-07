@@ -13,6 +13,9 @@ import {
   FileText,
   MessageSquare,
   ChevronLeft,
+  Grid3X3,
+  ListChecks,
+  Settings,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -28,8 +31,11 @@ export default function GameLayout({ children }: { children: ReactNode }) {
     { href: `/game/${gameId}/characters`, label: "Characters", icon: <Users size={16} /> },
     { href: `/game/${gameId}/graph`, label: "Network Graph", icon: <Network size={16} /> },
     { href: `/game/${gameId}/plotlines`, label: "Plotlines", icon: <GitBranch size={16} /> },
+    { href: `/game/${gameId}/matrix`, label: "Matrix", icon: <Grid3X3 size={16} /> },
+    { href: `/game/${gameId}/pipeline`, label: "Pipeline", icon: <ListChecks size={16} /> },
     { href: `/game/${gameId}/documents`, label: "Documents", icon: <FileText size={16} /> },
     { href: `/game/${gameId}/chat`, label: "AI Chat", icon: <MessageSquare size={16} /> },
+    { href: `/game/${gameId}/settings`, label: "Settings", icon: <Settings size={16} /> },
   ];
 
   return (

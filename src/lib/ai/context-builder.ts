@@ -11,6 +11,7 @@ export interface GameContext {
     archetype: string | null;
     description: string | null;
     status: string;
+    customFields?: Record<string, string>;
   }>;
   relationships: Array<{
     from: string;
@@ -38,7 +39,16 @@ export async function buildGameContext(gameId: string): Promise<GameContext> {
   const game = await db.game.findUnique({
     where: { id: gameId },
     include: {
-      characters: true,
+      characters: {
+        include: {
+          customFieldValues: {
+            include: {
+              definition: true,
+              selectedOptions: { include: { option: true } },
+            },
+          },
+        },
+      },
       relationships: {
         include: { fromEntity: true, toEntity: true },
       },
@@ -57,15 +67,28 @@ export async function buildGameContext(gameId: string): Promise<GameContext> {
   return {
     gameSummary: `"${game.name}" — ${game.genre ?? "Unknown genre"}, ${game.format.toLowerCase()} format, ${game.playerCount ?? "?"} players. ${game.setting ?? ""}`.trim(),
     designDoc: game.designDocSummary,
-    characters: game.characters.map((c) => ({
-      id: c.id,
-      name: c.name,
-      type: c.type,
-      faction: c.faction,
-      archetype: c.archetype,
-      description: c.description,
-      status: c.status,
-    })),
+    characters: game.characters.map((c) => {
+      const customFields: Record<string, string> = {};
+      for (const v of c.customFieldValues) {
+        const name = v.definition.name;
+        if (v.textValue) customFields[name] = v.textValue;
+        else if (v.numberValue != null) customFields[name] = String(v.numberValue);
+        else if (v.booleanValue != null) customFields[name] = v.booleanValue ? "Yes" : "No";
+        else if (v.dateValue) customFields[name] = v.dateValue.toISOString().split("T")[0];
+        else if (v.selectedOptions.length > 0)
+          customFields[name] = v.selectedOptions.map((so) => so.option.label).join(", ");
+      }
+      return {
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        faction: c.faction,
+        archetype: c.archetype,
+        description: c.description,
+        status: c.status,
+        customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+      };
+    }),
     relationships: game.relationships.map((r) => ({
       from: r.fromEntity.name,
       to: r.toEntity.name,

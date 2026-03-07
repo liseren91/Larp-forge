@@ -86,12 +86,15 @@ model Game {
 
   designDocSummary String? @db.Text
 
-  characters    GameEntity[]
-  relationships Relationship[]
-  plotlines     Plotline[]
-  files         GameFile[]
-  chatMessages  ChatMessage[]
-  auditRuns     AuditRun[]
+  characters            GameEntity[]
+  relationships         Relationship[]
+  plotlines             Plotline[]
+  files                 GameFile[]
+  chatMessages          ChatMessage[]
+  auditRuns             AuditRun[]
+  customFieldDefinitions CustomFieldDefinition[]
+  subRoleDefinitions    SubRoleDefinition[]
+  briefPipelineStages   BriefPipelineStage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -121,12 +124,16 @@ model GameEntity {
   archetype   String?
   description String?      @db.Text
   status      EntityStatus @default(DRAFT)
+  hasSubRoles Boolean      @default(false)
 
   gameId String
   game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   briefVersions    BriefVersion[]
   plotlineEntities PlotlineEntity[]
+  customFieldValues CustomFieldValue[]
+  subRoles         SubRole[]
+  briefProgress    BriefProgress?
 
   relationshipsFrom Relationship[] @relation("fromEntity")
   relationshipsTo   Relationship[] @relation("toEntity")
@@ -334,4 +341,166 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   @@index([gameId])
+}
+
+// ─── Feature 1: Custom Fields ──────────────────────────────────
+
+enum FieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  SELECT
+  MULTI_SELECT
+  DATE
+  BOOLEAN
+  URL
+}
+
+model CustomFieldDefinition {
+  id          String    @id @default(cuid())
+  gameId      String
+  game        Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  name        String
+  slug        String
+  fieldType   FieldType
+  description String?
+  isRequired  Boolean   @default(false)
+  sortOrder   Int       @default(0)
+
+  options        CustomFieldOption[]
+  values         CustomFieldValue[]
+
+  entityCategory String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([gameId, slug])
+  @@index([gameId])
+}
+
+model CustomFieldOption {
+  id           String   @id @default(cuid())
+  definitionId String
+  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  label        String
+  color        String?
+  sortOrder    Int      @default(0)
+
+  selectedBy   CustomFieldValueOption[]
+
+  @@index([definitionId])
+}
+
+model CustomFieldValue {
+  id           String   @id @default(cuid())
+  definitionId String
+  definition   CustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  characterId  String
+  character    GameEntity @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  textValue    String?
+  numberValue  Float?
+  booleanValue Boolean?
+  dateValue    DateTime?
+  selectedOptions CustomFieldValueOption[]
+
+  @@unique([definitionId, characterId])
+  @@index([characterId])
+}
+
+model CustomFieldValueOption {
+  id        String   @id @default(cuid())
+  valueId   String
+  value     CustomFieldValue @relation(fields: [valueId], references: [id], onDelete: Cascade)
+  optionId  String
+  option    CustomFieldOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([valueId, optionId])
+}
+
+// ─── Feature 2: Simplified SubRoles ────────────────────────────
+
+model SubRoleDefinition {
+  id        String @id @default(cuid())
+  gameId    String
+  game      Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  name      String
+  slug      String
+  sortOrder Int    @default(0)
+
+  subRoles  SubRole[]
+
+  @@unique([gameId, slug])
+  @@index([gameId])
+}
+
+model SubRole {
+  id              String @id @default(cuid())
+  characterId     String
+  character       GameEntity @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  definitionId    String
+  definition      SubRoleDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  notes           String? @db.Text
+
+  @@unique([characterId, definitionId])
+  @@index([characterId])
+}
+
+// ─── Feature 5: Brief Pipeline (status tracking) ──────────────
+
+enum StageType {
+  KANBAN_COLUMN
+  CHECKBOX
+}
+
+model BriefPipelineStage {
+  id        String    @id @default(cuid())
+  gameId    String
+  game      Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  name      String
+  slug      String
+  color     String    @default("#6b7280")
+  sortOrder Int       @default(0)
+
+  stageType StageType @default(KANBAN_COLUMN)
+  isFinal   Boolean   @default(false)
+
+  currentFor BriefProgress[] @relation("CurrentStage")
+  checkboxes BriefCheckbox[]
+
+  @@unique([gameId, slug])
+  @@index([gameId])
+}
+
+model BriefProgress {
+  id             String  @id @default(cuid())
+  characterId    String  @unique
+  character      GameEntity @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  currentStageId String?
+  currentStage   BriefPipelineStage? @relation("CurrentStage", fields: [currentStageId], references: [id])
+
+  checkedStages  BriefCheckbox[]
+
+  notes          String? @db.Text
+  lastMovedAt    DateTime?
+}
+
+model BriefCheckbox {
+  id         String @id @default(cuid())
+  progressId String
+  progress   BriefProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  stageId    String
+  stage      BriefPipelineStage @relation(fields: [stageId], references: [id])
+  checked    Boolean @default(false)
+  checkedAt  DateTime?
+
+  @@unique([progressId, stageId])
 }
