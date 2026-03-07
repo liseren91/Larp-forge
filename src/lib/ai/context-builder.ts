@@ -1,5 +1,20 @@
 import { db } from "@/lib/db";
 
+export interface CustomFieldSchema {
+  name: string;
+  slug: string;
+  fieldType: string;
+  description: string | null;
+  isRequired: boolean;
+  entityCategory: string | null;
+  options: Array<{ label: string; color: string | null }>;
+}
+
+export interface SubRoleSchema {
+  name: string;
+  slug: string;
+}
+
 export interface GameContext {
   gameSummary: string;
   designDoc: string | null;
@@ -33,34 +48,67 @@ export interface GameContext {
     description: string | null;
     extractedText: string | null;
   }>;
+  customFieldsSchema: CustomFieldSchema[];
+  subRolesSchema: SubRoleSchema[];
+}
+
+async function buildCustomFieldsSchema(gameId: string): Promise<CustomFieldSchema[]> {
+  const fields = await db.customFieldDefinition.findMany({
+    where: { gameId },
+    include: { options: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return fields.map((f) => ({
+    name: f.name,
+    slug: f.slug,
+    fieldType: f.fieldType,
+    description: f.description,
+    isRequired: f.isRequired,
+    entityCategory: f.entityCategory,
+    options: f.options.map((o) => ({ label: o.label, color: o.color })),
+  }));
+}
+
+async function buildSubRolesSchema(gameId: string): Promise<SubRoleSchema[]> {
+  const defs = await db.subRoleDefinition.findMany({
+    where: { gameId },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  return defs.map((d) => ({ name: d.name, slug: d.slug }));
 }
 
 export async function buildGameContext(gameId: string): Promise<GameContext> {
-  const game = await db.game.findUnique({
-    where: { id: gameId },
-    include: {
-      characters: {
-        include: {
-          customFieldValues: {
-            include: {
-              definition: true,
-              selectedOptions: { include: { option: true } },
+  const [game, customFieldsSchema, subRolesSchema] = await Promise.all([
+    db.game.findUnique({
+      where: { id: gameId },
+      include: {
+        characters: {
+          include: {
+            customFieldValues: {
+              include: {
+                definition: true,
+                selectedOptions: { include: { option: true } },
+              },
             },
           },
         },
+        relationships: {
+          include: { fromEntity: true, toEntity: true },
+        },
+        plotlines: {
+          include: { entities: { include: { entity: true } } },
+        },
+        files: {
+          where: { extractedText: { not: null } },
+          select: { name: true, category: true, description: true, extractedText: true },
+        },
       },
-      relationships: {
-        include: { fromEntity: true, toEntity: true },
-      },
-      plotlines: {
-        include: { entities: { include: { entity: true } } },
-      },
-      files: {
-        where: { extractedText: { not: null } },
-        select: { name: true, category: true, description: true, extractedText: true },
-      },
-    },
-  });
+    }),
+    buildCustomFieldsSchema(gameId),
+    buildSubRolesSchema(gameId),
+  ]);
 
   if (!game) throw new Error("Game not found");
 
@@ -109,6 +157,8 @@ export async function buildGameContext(gameId: string): Promise<GameContext> {
       description: f.description,
       extractedText: f.extractedText,
     })),
+    customFieldsSchema,
+    subRolesSchema,
   };
 }
 

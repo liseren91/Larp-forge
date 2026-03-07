@@ -90,6 +90,7 @@ model Game {
   relationships         Relationship[]
   plotlines             Plotline[]
   files                 GameFile[]
+  chatThreads           ChatThread[]
   chatMessages          ChatMessage[]
   auditRuns             AuditRun[]
   customFieldDefinitions CustomFieldDefinition[]
@@ -321,6 +322,21 @@ model AuditFinding {
 
 // ─── Domain: Chat ───────────────────────────────────────────────
 
+model ChatThread {
+  id        String   @id @default(cuid())
+  title     String   @default("New Chat")
+
+  gameId    String
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  messages  ChatMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([gameId])
+}
+
 enum ChatRole {
   USER
   ASSISTANT
@@ -332,15 +348,43 @@ model ChatMessage {
   role    ChatRole
   content String   @db.Text
 
+  threadId String
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
   gameId String
   game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  actions ChatAction[]
+
   createdAt DateTime @default(now())
 
   @@index([gameId])
+  @@index([threadId])
+}
+
+enum ActionStatus {
+  PENDING
+  APPLIED
+  FAILED
+  UNDONE
+}
+
+model ChatAction {
+  id         String       @id @default(cuid())
+  messageId  String
+  message    ChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  actionType String
+  actionId   String
+  payload    Json
+  status     ActionStatus @default(PENDING)
+  result     Json?
+  createdAt  DateTime     @default(now())
+  appliedAt  DateTime?
+
+  @@index([messageId])
 }
 
 // ─── Feature 1: Custom Fields ──────────────────────────────────
