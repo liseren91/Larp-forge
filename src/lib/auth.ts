@@ -24,6 +24,15 @@ if (process.env.EMAIL_SERVER && process.env.EMAIL_FROM) {
   );
 }
 
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return adminEmails.includes(email.toLowerCase());
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(db) as NextAuthOptions["adapter"],
   providers,
@@ -39,11 +48,21 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token.sub) {
         session.user.id = token.sub;
       }
+      if (session.user) {
+        session.user.isAdmin = token.isAdmin ?? false;
+        session.user.impersonatedBy = token.impersonatedBy;
+      }
       return session;
     },
     jwt({ token, user }) {
       if (user) {
         token.sub = user.id;
+        token.isAdmin = isAdminEmail(user.email);
+        token.adminEmail = user.email ?? undefined;
+      }
+      // Preserve impersonatedBy across token refreshes
+      if (token.impersonatedBy) {
+        token.isAdmin = true;
       }
       return token;
     },
