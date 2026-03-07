@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import {
   FileText,
   Sparkles,
@@ -22,6 +23,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -590,14 +592,38 @@ export function PlotlinesFromDocPanel({ open, onClose, gameId, onImported }: Pro
                       className="mt-1 accent-amber-500"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="text-sm font-medium">{c.mentionName}</span>
                         {c.suggestedEntityName && (
                           <Badge color="blue" className="text-[10px]">
                             matched: {c.suggestedEntityName} ({Math.round(c.confidence * 100)}%)
                           </Badge>
                         )}
+                        {((c.resolution === "existing" && c.selectedEntityId) || c.suggestedEntityId) && (
+                          <Link
+                            href={`/game/${gameId}/characters?open=${c.selectedEntityId ?? c.suggestedEntityId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300"
+                          >
+                            <ExternalLink size={10} /> Open character
+                          </Link>
+                        )}
                       </div>
+
+                      {(c.description || c.faction || c.archetype) && (
+                        <div className="mb-2 rounded bg-zinc-900/60 border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400">
+                          <span className="text-[10px] text-zinc-500 uppercase tracking-wide">From document</span>
+                          {c.description && (
+                            <p className="mt-0.5 line-clamp-4">{c.description}</p>
+                          )}
+                          {(c.faction || c.archetype) && (
+                            <p className="mt-1 text-zinc-500">
+                              {[c.faction, c.archetype].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       <div className="flex gap-1 mb-2">
                         <button

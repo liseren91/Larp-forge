@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Grid3X3, ShieldCheck, Filter, Loader2 } from "lucide-react";
+import { Grid3X3, ShieldCheck, Filter, Loader2, Users, GitBranch } from "lucide-react";
 
 const factionColors: Record<string, string> = {};
 const palette = [
@@ -76,11 +77,38 @@ export default function MatrixPage() {
   }
 
   if (data.plotlines.length === 0 || data.characters.length === 0) {
+    const noChars = data.characters.length === 0;
+    const noPlots = data.plotlines.length === 0;
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 text-zinc-500">
-        <Grid3X3 size={48} />
-        <p className="text-lg font-medium">No matrix data yet</p>
-        <p className="text-sm">Create characters and plotlines first, then manage assignments here.</p>
+      <div className="flex h-full flex-col items-center justify-center gap-5 text-zinc-500">
+        <Grid3X3 size={48} className="text-zinc-600" />
+        <p className="text-lg font-medium text-zinc-400">No matrix data yet</p>
+        <p className="text-sm text-center max-w-sm">
+          {noChars && noPlots && "Create characters and plotlines first, then manage assignments here."}
+          {noChars && !noPlots && "Add characters to this game first, then you can assign them to plotlines in the matrix."}
+          {!noChars && noPlots && "Create plotlines first, then you can assign characters to them here."}
+        </p>
+        <p className="text-xs text-zinc-600">
+          ({data.characters.length} characters, {data.plotlines.length} plotlines)
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={`/game/${gameId}/characters`}>
+              <Users size={14} className="mr-1.5" />
+              Characters
+            </Link>
+          </Button>
+          <Button variant="secondary" size="sm" asChild>
+            <Link href={`/game/${gameId}/plotlines`}>
+              <GitBranch size={14} className="mr-1.5" />
+              Plotlines
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => matrix.refetch()} disabled={matrix.isRefetching}>
+            {matrix.isRefetching ? <Loader2 size={14} className="animate-spin mr-1.5" /> : null}
+            Refresh
+          </Button>
+        </div>
       </div>
     );
   }

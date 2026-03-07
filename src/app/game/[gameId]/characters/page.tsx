@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,8 @@ const emptyChar: NewCharacter = { name: "", type: "CHARACTER", faction: "", arch
 
 export default function CharactersPage() {
   const { gameId } = useParams() as { gameId: string };
+  const searchParams = useSearchParams();
+  const openId = searchParams.get("open");
   const [showCreate, setShowCreate] = useState(false);
   const [showMassCreate, setShowMassCreate] = useState(false);
   const [showStoryImport, setShowStoryImport] = useState(false);
@@ -79,6 +81,12 @@ export default function CharactersPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMoreMenu]);
+
+  useEffect(() => {
+    if (openId && characters.data?.some((c) => c.id === openId)) {
+      setSelectedId(openId);
+    }
+  }, [openId, characters.data]);
 
   return (
     <div className="flex h-screen">

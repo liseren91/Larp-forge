@@ -253,12 +253,13 @@ export function MassCreatePanel({ open, onClose, gameId, onCreated }: Props) {
                           className="h-7 text-xs"
                         />
                       </td>
-                      <td className="py-1.5 pr-2">
-                        <Input
+                      <td className="py-1.5 pr-2 align-top">
+                        <Textarea
                           value={row.description}
                           onChange={(e) => updateRow(row.id, "description", e.target.value)}
                           placeholder="Description"
-                          className="h-7 text-xs"
+                          className="min-h-[5.5rem] w-full min-w-[220px] resize-y text-xs"
+                          rows={4}
                         />
                       </td>
                       <td className="py-1.5">
