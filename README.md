@@ -1,36 +1,105 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LARP Forge
 
-## Getting Started
+AI-Powered Platform for LARP Game Design.
 
-First, run the development server:
+Build character webs, generate player briefs with AI, and manage your live-action role-playing game — all in one structured workspace.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Architecture
+
+```
+web/                    Next.js 14 (App Router) + tRPC + Prisma
+├── src/
+│   ├── app/            Pages & API routes
+│   │   ├── api/ai/     AI endpoints (chat, brief generation, audit)
+│   │   ├── api/trpc/   tRPC handler
+│   │   ├── api/auth/   NextAuth handler
+│   │   ├── api/export/ Brief export (HTML/PDF)
+│   │   ├── dashboard/  User dashboard
+│   │   ├── game/[id]/  Game workspace (overview, characters, graph, plotlines, chat)
+│   │   └── auth/       Sign-in page
+│   ├── components/     React components
+│   │   ├── ui/         Design system (Button, Input, Modal, Badge, etc.)
+│   │   ├── game/       Game-specific (CharacterDetail, BriefPanel, AuditPanel, etc.)
+│   │   └── layout/     Layout components (AppShell)
+│   ├── lib/            Shared utilities
+│   │   ├── ai/         AI context builder, prompts, LLM client
+│   │   ├── auth.ts     NextAuth configuration
+│   │   ├── db.ts       Prisma client singleton
+│   │   ├── trpc.ts     tRPC React client
+│   │   └── utils.ts    cn() utility
+│   └── server/         tRPC server
+│       ├── trpc.ts     tRPC initialization + auth middleware
+│       └── routers/    Domain routers (game, character, relationship, plotline, brief, chat)
+├── prisma/
+│   └── schema.prisma   Database schema
+└── prisma.config.ts    Prisma 7 config
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Quick Start
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Prerequisites
+- Node.js 20+
+- PostgreSQL database (or use [Neon](https://neon.tech) for serverless)
+- An LLM API key (Anthropic Claude or OpenAI GPT-4)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Setup
 
-## Learn More
+```bash
+cd web
+npm install
+cp .env.example .env
+# Edit .env with your database URL and API keys
+npx prisma migrate dev --name init
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+### Environment Variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `NEXTAUTH_URL` | Yes | App URL (http://localhost:3000 for dev) |
+| `NEXTAUTH_SECRET` | Yes | Session encryption secret |
+| `GOOGLE_CLIENT_ID` | No | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | No | Google OAuth client secret |
+| `ANTHROPIC_API_KEY` | * | Claude API key (preferred) |
+| `OPENAI_API_KEY` | * | OpenAI API key (fallback) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+\* At least one LLM API key is required for AI features.
 
-## Deploy on Vercel
+## Key Features (MVP)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Game Workspace**: Create games with metadata, upload design documents
+- **Character Management**: Full CRUD with factions, archetypes, status tracking
+- **Relationship Editor**: Typed edges (rivalry, alliance, love, etc.) with intensity and direction
+- **Interactive Network Graph**: Force-directed graph with faction coloring, edge styling, filters
+- **AI Chat**: Streaming chat with full game context awareness
+- **Brief Generation**: Structured character briefs (backstory, goals, secrets, relationships, mechanics)
+- **Section-level Editing**: Edit and regenerate individual brief sections
+- **Version History**: Every brief generation creates a new version; rollback supported
+- **Game Audit**: Rule-based + AI-powered structural analysis (isolated characters, thin plotlines, etc.)
+- **Export**: HTML export of character briefs (print to PDF supported)
+- **Onboarding**: Guided first-run flow
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deployment
+
+### Railway
+
+```bash
+# Install Railway CLI
+railway login
+railway init
+railway up
+```
+
+Set environment variables in Railway dashboard.
+
+## Data Model
+
+Core entities form a connected graph:
+- **Game** → contains Characters, Relationships, Plotlines, Files, Chat
+- **GameEntity** (Character/NPC) → has BriefVersions, connected via Relationships
+- **Relationship** → typed directed edge between two entities
+- **Plotline** → links to entities via junction table
+- **BriefVersion** → versioned, structured sections, approval workflow
+- **ChatMessage** → persistent conversation history per game
