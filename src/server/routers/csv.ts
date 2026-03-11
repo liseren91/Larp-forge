@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 import { generateCsv, parseCsv } from "@/lib/csv";
 import { TRPCError } from "@trpc/server";
 
@@ -25,7 +26,7 @@ export const csvRouter = router({
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       const entities = await ctx.db.gameEntity.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         orderBy: { createdAt: "asc" },
       });
 
@@ -50,7 +51,7 @@ export const csvRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       const records = parseCsv(input.csvText);
@@ -110,7 +111,7 @@ export const csvRouter = router({
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       const relationships = await ctx.db.relationship.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: { fromEntity: true, toEntity: true },
         orderBy: { createdAt: "asc" },
       });
@@ -136,7 +137,7 @@ export const csvRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       const records = parseCsv(input.csvText);

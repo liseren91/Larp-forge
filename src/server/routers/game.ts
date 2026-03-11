@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere } from "../access";
 
 export const gameRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return ctx.db.game.findMany({
-      where: { ownerId: ctx.session.user.id },
+      where: gameAccessWhere(ctx.session.user.id),
       orderBy: { updatedAt: "desc" },
       include: {
         _count: { select: { characters: true, plotlines: true } },
+        owner: { select: { id: true, name: true, image: true } },
       },
     });
   }),
@@ -16,7 +18,7 @@ export const gameRouter = router({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const game = await ctx.db.game.findFirst({
-        where: { id: input.id, ownerId: ctx.session.user.id },
+        where: { id: input.id, ...gameAccessWhere(ctx.session.user.id) },
         include: {
           characters: { orderBy: { createdAt: "asc" } },
           relationships: true,
@@ -61,10 +63,10 @@ export const gameRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
-      return ctx.db.game.update({
-        where: { id, ownerId: ctx.session.user.id },
-        data,
+      await ctx.db.game.findFirstOrThrow({
+        where: { id, ...gameAccessWhere(ctx.session.user.id) },
       });
+      return ctx.db.game.update({ where: { id }, data });
     }),
 
   delete: protectedProcedure

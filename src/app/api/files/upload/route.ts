@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 async function extractText(buffer: Buffer, mimeType: string, fileName: string): Promise<string | null> {
   const ext = fileName.split(".").pop()?.toLowerCase();
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
     }
 
     await db.game.findFirstOrThrow({
-      where: { id: gameId, ownerId: session.user.id },
+      where: { id: gameId, ...gameAccessWhere(session.user.id) },
     });
 
     const arrayBuffer = await file.arrayBuffer();

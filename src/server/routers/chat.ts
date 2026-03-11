@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { nestedGameAccessWhere } from "../access";
 
 export const chatRouter = router({
   listThreads: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.chatThread.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: { _count: { select: { messages: true } } },
         orderBy: { updatedAt: "desc" },
       });
@@ -39,7 +40,7 @@ export const chatRouter = router({
       return ctx.db.chatThread.update({
         where: {
           id: input.threadId,
-          game: { ownerId: ctx.session.user.id },
+          ...nestedGameAccessWhere(ctx.session.user.id),
         },
         data: { title: input.title },
       });
@@ -51,7 +52,7 @@ export const chatRouter = router({
       return ctx.db.chatThread.delete({
         where: {
           id: input.threadId,
-          game: { ownerId: ctx.session.user.id },
+          ...nestedGameAccessWhere(ctx.session.user.id),
         },
       });
     }),
@@ -70,7 +71,7 @@ export const chatRouter = router({
         where: {
           gameId: input.gameId,
           threadId: input.threadId,
-          game: { ownerId: ctx.session.user.id },
+          ...nestedGameAccessWhere(ctx.session.user.id),
         },
         include: {
           actions: {

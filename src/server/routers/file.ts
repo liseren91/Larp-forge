@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { nestedGameAccessWhere } from "../access";
 
 export const fileRouter = router({
   list: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.gameFile.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         select: {
           id: true,
           name: true,
@@ -25,7 +26,7 @@ export const fileRouter = router({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.gameFile.findFirst({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 
@@ -40,7 +41,7 @@ export const fileRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.gameFile.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -49,7 +50,7 @@ export const fileRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.gameFile.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 });

@@ -52,6 +52,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   games         Game[]
+  memberships   GameMember[]
   chatMessages  ChatMessage[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -100,8 +101,27 @@ model Game {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Scalability: future team_members table
-  // members GameMember[]
+  members GameMember[]
+}
+
+// ─── Domain: Game Members ────────────────────────────────────────
+
+enum MemberRole {
+  EDITOR
+  VIEWER
+}
+
+model GameMember {
+  id     String     @id @default(cuid())
+  gameId String
+  userId String
+  role   MemberRole @default(EDITOR)
+  game   Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([gameId, userId])
+  @@index([userId])
 }
 
 // ─── Domain: Characters & NPCs ──────────────────────────────────

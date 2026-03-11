@@ -65,7 +65,7 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">My Games</h1>
+            <h1 className="text-2xl font-bold">Games</h1>
             <p className="mt-1 text-sm text-zinc-400">
               Welcome back{session?.user?.name ? `, ${session.user.name}` : ""}
             </p>
@@ -91,33 +91,49 @@ export default function DashboardPage() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {games.data?.map((game) => (
-            <button
-              key={game.id}
-              onClick={() => router.push(`/game/${game.id}`)}
-              className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-left transition-all hover:border-amber-800/50 hover:bg-zinc-900"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-semibold text-zinc-100 group-hover:text-amber-400 transition-colors">
-                  {game.name}
-                </h3>
-                <Badge color={game.format === "CHAMBER" ? "blue" : "purple"}>
-                  {game.format.toLowerCase()}
-                </Badge>
-              </div>
-              {game.genre && <p className="mb-3 text-xs text-zinc-500">{game.genre}</p>}
-              <div className="flex gap-4 text-xs text-zinc-500">
-                <span className="flex items-center gap-1">
-                  <Users size={12} />
-                  {game._count.characters} characters
-                </span>
-                <span className="flex items-center gap-1">
-                  <GitBranch size={12} />
-                  {game._count.plotlines} plotlines
-                </span>
-              </div>
-            </button>
-          ))}
+          {games.data?.map((game) => {
+            const isShared = game.ownerId !== session?.user?.id;
+            return (
+              <button
+                key={game.id}
+                onClick={() => router.push(`/game/${game.id}`)}
+                className="group rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-left transition-all hover:border-amber-800/50 hover:bg-zinc-900"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-semibold text-zinc-100 group-hover:text-amber-400 transition-colors truncate mr-2">
+                    {game.name}
+                  </h3>
+                  <div className="flex gap-1.5 shrink-0">
+                    {isShared && <Badge color="green">shared</Badge>}
+                    <Badge color={game.format === "CHAMBER" ? "blue" : "purple"}>
+                      {game.format.toLowerCase()}
+                    </Badge>
+                  </div>
+                </div>
+                {game.genre && <p className="mb-3 text-xs text-zinc-500">{game.genre}</p>}
+                <div className="flex gap-4 text-xs text-zinc-500">
+                  <span className="flex items-center gap-1">
+                    <Users size={12} />
+                    {game._count.characters} characters
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <GitBranch size={12} />
+                    {game._count.plotlines} plotlines
+                  </span>
+                </div>
+                {isShared && game.owner && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500 border-t border-zinc-800 pt-2">
+                    {game.owner.image ? (
+                      <img src={game.owner.image} alt="" className="h-4 w-4 rounded-full" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full bg-zinc-700" />
+                    )}
+                    <span>{game.owner.name ?? "Unknown"}</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
   }
 
   const entity = await db.gameEntity.findFirst({
-    where: { id: entityId, game: { ownerId: session.user.id } },
+    where: { id: entityId, game: gameAccessWhere(session.user.id) },
     include: {
       game: true,
       briefVersions: { orderBy: { version: "desc" }, take: 1 },

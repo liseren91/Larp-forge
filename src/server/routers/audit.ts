@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const auditRouter = router({
   list: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.auditRun.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: { findings: true },
         orderBy: { createdAt: "desc" },
         take: 10,
@@ -19,7 +20,7 @@ export const auditRouter = router({
       return ctx.db.auditFinding.update({
         where: {
           id: input.id,
-          auditRun: { game: { ownerId: ctx.session.user.id } },
+          auditRun: nestedGameAccessWhere(ctx.session.user.id),
         },
         data: { resolved: input.resolved },
       });
@@ -31,7 +32,7 @@ export const auditRouter = router({
       return ctx.db.auditRun.delete({
         where: {
           id: input.id,
-          game: { ownerId: ctx.session.user.id },
+          ...nestedGameAccessWhere(ctx.session.user.id),
         },
       });
     }),

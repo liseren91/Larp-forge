@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
   const message = await db.chatMessage.findFirst({
     where: {
       id: messageId,
-      game: { ownerId: session.user.id },
+      ...{ game: gameAccessWhere(session.user.id) },
     },
   });
 

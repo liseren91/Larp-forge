@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const plotlineRouter = router({
   list: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.plotline.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: {
           entities: { include: { entity: true } },
           _count: { select: { entities: true, relationships: true } },
@@ -26,7 +27,7 @@ export const plotlineRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       return ctx.db.plotline.create({ data: input });
     }),
@@ -44,7 +45,7 @@ export const plotlineRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.plotline.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -53,7 +54,7 @@ export const plotlineRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.plotline.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 
@@ -78,7 +79,7 @@ export const plotlineRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.plotline.findFirstOrThrow({
-        where: { id: input.plotlineId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.plotlineId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
       const existing = await ctx.db.plotlineEntity.findMany({
         where: { plotlineId: input.plotlineId, entityId: { in: input.entityIds } },
