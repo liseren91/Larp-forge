@@ -1,12 +1,16 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { nestedGameAccessWhere } from "../access";
 
 export const briefRouter = router({
   listByEntity: protectedProcedure
     .input(z.object({ entityId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.briefVersion.findMany({
-        where: { entityId: input.entityId },
+        where: {
+          entityId: input.entityId,
+          entity: nestedGameAccessWhere(ctx.session.user.id),
+        },
         orderBy: { version: "desc" },
       });
     }),
@@ -15,7 +19,10 @@ export const briefRouter = router({
     .input(z.object({ entityId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.briefVersion.findFirst({
-        where: { entityId: input.entityId },
+        where: {
+          entityId: input.entityId,
+          entity: nestedGameAccessWhere(ctx.session.user.id),
+        },
         orderBy: { version: "desc" },
       });
     }),
@@ -36,6 +43,9 @@ export const briefRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { entityId, ...sections } = input;
+      await ctx.db.gameEntity.findFirstOrThrow({
+        where: { id: entityId, ...nestedGameAccessWhere(ctx.session.user.id) },
+      });
       const latest = await ctx.db.briefVersion.findFirst({
         where: { entityId },
         orderBy: { version: "desc" },
@@ -54,6 +64,12 @@ export const briefRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      await ctx.db.briefVersion.findFirstOrThrow({
+        where: {
+          id: input.id,
+          entity: nestedGameAccessWhere(ctx.session.user.id),
+        },
+      });
       return ctx.db.briefVersion.update({
         where: { id: input.id },
         data: { status: input.status },

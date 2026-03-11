@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { gameAccessWhere, nestedGameAccessWhere } from "../access";
@@ -67,6 +68,22 @@ export const plotlineRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const [plotline, entity] = await Promise.all([
+        ctx.db.plotline.findFirstOrThrow({
+          where: { id: input.plotlineId, ...nestedGameAccessWhere(ctx.session.user.id) },
+          select: { gameId: true },
+        }),
+        ctx.db.gameEntity.findFirstOrThrow({
+          where: { id: input.entityId, ...nestedGameAccessWhere(ctx.session.user.id) },
+          select: { gameId: true },
+        }),
+      ]);
+      if (plotline.gameId !== entity.gameId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Plotline and entity must belong to the same game",
+        });
+      }
       return ctx.db.plotlineEntity.create({ data: input });
     }),
 
@@ -98,6 +115,9 @@ export const plotlineRouter = router({
   removeEntity: protectedProcedure
     .input(z.object({ plotlineId: z.string(), entityId: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      await ctx.db.plotline.findFirstOrThrow({
+        where: { id: input.plotlineId, ...nestedGameAccessWhere(ctx.session.user.id) },
+      });
       return ctx.db.plotlineEntity.delete({
         where: {
           plotlineId_entityId: {

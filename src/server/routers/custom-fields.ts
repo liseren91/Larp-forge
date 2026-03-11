@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
 import { gameAccessWhere, nestedGameAccessWhere } from "../access";
@@ -130,10 +131,22 @@ export const customFieldsRouter = router({
       await ctx.db.game.findFirstOrThrow({
         where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
+      const definitionsInGame = await ctx.db.customFieldDefinition.findMany({
+        where: { gameId: input.gameId, id: { in: input.orderedIds } },
+        select: { id: true },
+      });
+      if (definitionsInGame.length !== input.orderedIds.length) {
+        const foundIds = new Set(definitionsInGame.map((d) => d.id));
+        const invalid = input.orderedIds.filter((id) => !foundIds.has(id));
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Some definition IDs do not belong to this game: ${invalid.join(", ")}`,
+        });
+      }
       await ctx.db.$transaction(
         input.orderedIds.map((id, i) =>
           ctx.db.customFieldDefinition.update({
-            where: { id },
+            where: { id, gameId: input.gameId },
             data: { sortOrder: i },
           })
         )
