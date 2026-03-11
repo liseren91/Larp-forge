@@ -1,4 +1,6 @@
 # LARP Forge
+PRD link
+https://docs.google.com/document/d/1uY4jDEDKPggJHHOw5Wfza_urne-oCMe6
 
 AI-Powered Platform for LARP Game Design.
 
