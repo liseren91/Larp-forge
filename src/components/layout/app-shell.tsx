@@ -35,7 +35,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </nav>
 
-          <div className="border-t border-zinc-800 p-3">
+          <div className="border-t border-zinc-800 p-3 space-y-3">
+            <div className="rounded-md bg-zinc-800/50 px-2.5 py-2 text-[11px] leading-relaxed text-zinc-500">
+              Если у вас что-то сломалось или вы хотите дать денег на оплату нейронок, напишите в TG{" "}
+              <a
+                href="https://t.me/liseren"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-amber-500 hover:text-amber-400 transition-colors"
+              >
+                @liseren
+              </a>
+            </div>
+
             {session?.user && (
               <div className="mb-2 flex items-center gap-2 px-2">
                 {session.user.image ? (

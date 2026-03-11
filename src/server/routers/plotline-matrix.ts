@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const plotlineMatrixRouter = router({
   getData: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       const game = await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       const characters = await ctx.db.gameEntity.findMany({
@@ -56,7 +57,7 @@ export const plotlineMatrixRouter = router({
     .input(z.object({ plotlineId: z.string(), characterId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const plotline = await ctx.db.plotline.findFirstOrThrow({
-        where: { id: input.plotlineId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.plotlineId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       const existing = await ctx.db.plotlineEntity.findUnique({
@@ -88,7 +89,7 @@ export const plotlineMatrixRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const plotline = await ctx.db.plotline.findFirstOrThrow({
-        where: { id: input.plotlineId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.plotlineId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       await ctx.db.plotlineEntity.deleteMany({

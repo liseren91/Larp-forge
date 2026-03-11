@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 interface CreatedEntity {
   type: string;
@@ -73,23 +74,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Missing chatActionId" }, { status: 400 });
   }
 
-  const action = await db.chatAction.findUnique({
-    where: { id: chatActionId },
-    include: {
-      message: {
-        include: {
-          game: { select: { ownerId: true } },
-        },
-      },
+  const action = await db.chatAction.findFirst({
+    where: {
+      id: chatActionId,
+      message: { game: gameAccessWhere(session.user.id) },
     },
   });
 
   if (!action) {
     return Response.json({ error: "Action not found" }, { status: 404 });
-  }
-
-  if (action.message.game.ownerId !== session.user.id) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   if (action.status !== "APPLIED") {

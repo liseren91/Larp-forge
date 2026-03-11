@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 const fieldTypeEnum = z.enum([
   "TEXT", "TEXTAREA", "NUMBER", "SELECT", "MULTI_SELECT", "DATE", "BOOLEAN", "URL",
@@ -10,7 +11,7 @@ export const customFieldsRouter = router({
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.customFieldDefinition.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: { options: { orderBy: { sortOrder: "asc" } } },
         orderBy: { sortOrder: "asc" },
       });
@@ -33,7 +34,7 @@ export const customFieldsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       const { options, ...defData } = input;
@@ -83,7 +84,7 @@ export const customFieldsRouter = router({
       const { id, options, ...data } = input;
 
       const def = await ctx.db.customFieldDefinition.findFirstOrThrow({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       if (options) {
@@ -113,7 +114,7 @@ export const customFieldsRouter = router({
       return ctx.db.customFieldDefinition.delete({
         where: {
           id: input.id,
-          game: { ownerId: ctx.session.user.id },
+          ...nestedGameAccessWhere(ctx.session.user.id),
         },
       });
     }),
@@ -127,7 +128,7 @@ export const customFieldsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       await ctx.db.$transaction(
         input.orderedIds.map((id, i) =>
@@ -145,7 +146,7 @@ export const customFieldsRouter = router({
       return ctx.db.customFieldValue.findMany({
         where: {
           characterId: input.characterId,
-          character: { game: { ownerId: ctx.session.user.id } },
+          character: nestedGameAccessWhere(ctx.session.user.id),
         },
         include: { selectedOptions: { include: { option: true } } },
       });
@@ -169,7 +170,7 @@ export const customFieldsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const entity = await ctx.db.gameEntity.findFirstOrThrow({
-        where: { id: input.characterId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.characterId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       for (const val of input.values) {
@@ -224,7 +225,7 @@ export const customFieldsRouter = router({
         where: {
           character: {
             gameId: input.gameId,
-            game: { ownerId: ctx.session.user.id },
+            ...nestedGameAccessWhere(ctx.session.user.id),
           },
         },
         include: { selectedOptions: { include: { option: true } } },

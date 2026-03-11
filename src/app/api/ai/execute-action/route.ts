@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 import { executeAction } from "@/lib/ai/action-executor";
 import type { ActionType } from "@/lib/ai/action-types";
 
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   }
 
   const game = await db.game.findFirst({
-    where: { id: gameId, ownerId: session.user.id },
+    where: { id: gameId, ...gameAccessWhere(session.user.id) },
   });
   if (!game) {
     return Response.json({ error: "Game not found" }, { status: 404 });

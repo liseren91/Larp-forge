@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +18,10 @@ import {
   ListChecks,
   GripVertical,
   Palette,
+  Users,
+  LogOut,
+  Crown,
+  UserMinus,
 } from "lucide-react";
 
 const FIELD_TYPES = [
@@ -38,12 +44,13 @@ function slugify(s: string): string {
 
 export default function SettingsPage() {
   const { gameId } = useParams() as { gameId: string };
-  const [activeSection, setActiveSection] = useState<"fields" | "subroles" | "pipeline">("fields");
+  const [activeSection, setActiveSection] = useState<"fields" | "subroles" | "pipeline" | "members">("fields");
 
   const sections = [
     { id: "fields" as const, label: "Custom Fields", icon: <Settings size={14} /> },
     { id: "subroles" as const, label: "Sub-Roles", icon: <Layers size={14} /> },
     { id: "pipeline" as const, label: "Pipeline Stages", icon: <ListChecks size={14} /> },
+    { id: "members" as const, label: "Members", icon: <Users size={14} /> },
   ];
 
   return (
@@ -70,6 +77,7 @@ export default function SettingsPage() {
       {activeSection === "fields" && <CustomFieldsSection gameId={gameId} />}
       {activeSection === "subroles" && <SubRolesSection gameId={gameId} />}
       {activeSection === "pipeline" && <PipelineSection gameId={gameId} />}
+      {activeSection === "members" && <MembersSection gameId={gameId} />}
     </div>
   );
 }
@@ -575,6 +583,158 @@ function PipelineSection({ gameId }: { gameId: string }) {
           </div>
         </form>
       </Modal>
+    </div>
+  );
+}
+
+function MembersSection({ gameId }: { gameId: string }) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+
+  const membersQuery = trpc.gameMembers.list.useQuery({ gameId });
+  const invite = trpc.gameMembers.invite.useMutation({
+    onSuccess: () => {
+      setEmail("");
+      setError("");
+      membersQuery.refetch();
+    },
+    onError: (err) => setError(err.message),
+  });
+  const remove = trpc.gameMembers.remove.useMutation({
+    onSuccess: () => membersQuery.refetch(),
+  });
+  const leave = trpc.gameMembers.leave.useMutation({
+    onSuccess: () => router.push("/dashboard"),
+  });
+
+  const isOwner = membersQuery.data?.ownerId === session?.user?.id;
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-zinc-400">
+        Manage who has access to this game.
+      </p>
+
+      {isOwner && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            invite.mutate({ gameId, email });
+          }}
+          className="mb-6 flex gap-2"
+        >
+          <Input
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            placeholder="user@example.com"
+            type="email"
+            required
+            className="flex-1"
+          />
+          <Button type="submit" disabled={invite.isPending}>
+            {invite.isPending ? "Inviting..." : "Invite"}
+          </Button>
+        </form>
+      )}
+
+      {error && (
+        <p className="mb-4 text-sm text-red-400">{error}</p>
+      )}
+
+      <div className="space-y-2">
+        {membersQuery.data && (
+          <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+            <div className="flex items-center gap-3">
+              <Crown size={14} className="text-amber-400" />
+              <span className="text-sm font-medium">Owner</span>
+              <span className="text-xs text-zinc-500">
+                {session?.user?.id === membersQuery.data.ownerId ? "You" : ""}
+              </span>
+            </div>
+            <Badge color="amber">owner</Badge>
+          </div>
+        )}
+
+        {membersQuery.data?.members.map((member) => (
+          <div
+            key={member.id}
+            className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
+          >
+            <div className="flex items-center gap-3">
+              {member.user.image ? (
+                <img src={member.user.image} alt="" className="h-6 w-6 rounded-full" />
+              ) : (
+                <div className="h-6 w-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-medium text-zinc-300">
+                  {(member.user.name ?? member.user.email ?? "?")[0]?.toUpperCase()}
+                </div>
+              )}
+              <div>
+                <span className="text-sm font-medium">
+                  {member.user.name ?? member.user.email}
+                </span>
+                {member.user.name && member.user.email && (
+                  <span className="ml-2 text-xs text-zinc-500">{member.user.email}</span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge color="green">{member.role.toLowerCase()}</Badge>
+              {isOwner && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm(`Remove ${member.user.name ?? member.user.email}?`)) {
+                      remove.mutate({ gameId, userId: member.userId });
+                    }
+                  }}
+                >
+                  <UserMinus size={14} />
+                </Button>
+              )}
+              {!isOwner && member.userId === session?.user?.id && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (confirm("Leave this project?")) {
+                      leave.mutate({ gameId });
+                    }
+                  }}
+                >
+                  <LogOut size={14} />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {membersQuery.data?.members.length === 0 && (
+          <div className="rounded-lg border border-dashed border-zinc-700 p-8 text-center text-zinc-500">
+            No team members yet. Invite collaborators by email above.
+          </div>
+        )}
+      </div>
+
+      {!isOwner && (
+        <div className="mt-6 border-t border-zinc-800 pt-4">
+          <Button
+            variant="ghost"
+            className="text-red-400 hover:text-red-300"
+            onClick={() => {
+              if (confirm("Leave this project? You will lose access.")) {
+                leave.mutate({ gameId });
+              }
+            }}
+          >
+            <LogOut size={14} className="mr-2" />
+            Leave Project
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { router } from "../trpc";
 import { gameRouter } from "./game";
+import { gameMembersRouter } from "./game-members";
 import { characterRouter } from "./character";
 import { relationshipRouter } from "./relationship";
 import { plotlineRouter } from "./plotline";
@@ -16,6 +17,7 @@ import { csvRouter } from "./csv";
 
 export const appRouter = router({
   game: gameRouter,
+  gameMembers: gameMembersRouter,
   character: characterRouter,
   relationship: relationshipRouter,
   plotline: plotlineRouter,

@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const subRolesRouter = router({
   listDefinitions: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.subRoleDefinition.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         orderBy: { sortOrder: "asc" },
       });
     }),
@@ -21,7 +22,7 @@ export const subRolesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       const maxSort = await ctx.db.subRoleDefinition.aggregate({
         where: { gameId: input.gameId },
@@ -42,7 +43,7 @@ export const subRolesRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.subRoleDefinition.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -51,7 +52,7 @@ export const subRolesRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.subRoleDefinition.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 
@@ -64,7 +65,7 @@ export const subRolesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       await ctx.db.subRoleDefinition.deleteMany({ where: { gameId: input.gameId } });
@@ -97,7 +98,7 @@ export const subRolesRouter = router({
       return ctx.db.subRole.findMany({
         where: {
           characterId: input.characterId,
-          character: { game: { ownerId: ctx.session.user.id } },
+          character: nestedGameAccessWhere(ctx.session.user.id),
         },
         include: { definition: true },
         orderBy: { definition: { sortOrder: "asc" } },
@@ -114,7 +115,7 @@ export const subRolesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.gameEntity.findFirstOrThrow({
-        where: { id: input.characterId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.characterId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       return ctx.db.subRole.upsert({
@@ -137,7 +138,7 @@ export const subRolesRouter = router({
     .input(z.object({ characterId: z.string(), enable: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const entity = await ctx.db.gameEntity.findFirstOrThrow({
-        where: { id: input.characterId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.characterId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       await ctx.db.gameEntity.update({

@@ -5,6 +5,7 @@ import { buildGameContext } from "@/lib/ai/context-builder";
 import { SYSTEM_PROMPT_EXTRACT_STORY_GRAPH } from "@/lib/ai/prompts";
 import { chatCompletion } from "@/lib/ai/llm-client";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 const MAX_TEXT_LENGTH = 30_000;
 
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
 
     if (fileId && !storyText) {
       const file = await db.gameFile.findFirst({
-        where: { id: fileId, gameId, game: { ownerId: session.user.id } },
+        where: { id: fileId, gameId, game: gameAccessWhere(session.user.id) },
         select: { extractedText: true },
       });
       if (!file?.extractedText) {

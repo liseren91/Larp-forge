@@ -3,6 +3,7 @@ import { jsonrepair } from "jsonrepair";
 import { authOptions } from "@/lib/auth";
 import { chatCompletion } from "@/lib/ai/llm-client";
 import { db } from "@/lib/db";
+import { gameAccessWhere } from "@/server/access";
 
 const SYSTEM_PROMPT = `You are an AI assistant for LARP game masters. Your task is to recommend which characters (PC and NPC) from the game would best fit a given plotline.
 
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
   const [game, plotline] = await Promise.all([
     db.game.findFirst({
-      where: { id: gameId, ownerId: userId },
+      where: { id: gameId, ...gameAccessWhere(userId) },
       select: { id: true },
     }),
     db.plotline.findFirst({

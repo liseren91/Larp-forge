@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const briefPipelineRouter = router({
   listStages: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.briefPipelineStage.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         orderBy: { sortOrder: "asc" },
       });
     }),
@@ -24,7 +25,7 @@ export const briefPipelineRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       const maxSort = await ctx.db.briefPipelineStage.aggregate({
         where: { gameId: input.gameId },
@@ -48,7 +49,7 @@ export const briefPipelineRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.briefPipelineStage.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -57,7 +58,7 @@ export const briefPipelineRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.briefPipelineStage.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 
@@ -65,7 +66,7 @@ export const briefPipelineRouter = router({
     .input(z.object({ gameId: z.string(), orderedIds: z.array(z.string()) }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       await ctx.db.$transaction(
         input.orderedIds.map((id, i) =>
@@ -83,7 +84,7 @@ export const briefPipelineRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       await ctx.db.briefPipelineStage.deleteMany({
@@ -119,7 +120,7 @@ export const briefPipelineRouter = router({
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       return ctx.db.briefProgress.findMany({
@@ -136,7 +137,7 @@ export const briefPipelineRouter = router({
     .input(z.object({ characterId: z.string(), stageId: z.string().nullable() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.gameEntity.findFirstOrThrow({
-        where: { id: input.characterId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.characterId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       return ctx.db.briefProgress.upsert({
@@ -157,7 +158,7 @@ export const briefPipelineRouter = router({
     .input(z.object({ characterId: z.string(), stageId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db.gameEntity.findFirstOrThrow({
-        where: { id: input.characterId, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.characterId, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
 
       const progress = await ctx.db.briefProgress.upsert({

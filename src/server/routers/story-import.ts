@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 const RELATIONSHIP_TYPES = [
   "RIVALRY", "ALLIANCE", "SECRET", "DEBT", "LOVE",
@@ -67,7 +68,7 @@ export const storyImportRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       return ctx.db.$transaction(async (tx) => {
@@ -199,7 +200,7 @@ export const storyImportRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       await ctx.db.plotline.findFirstOrThrow({
         where: { id: input.plotlineId, gameId: input.gameId },
@@ -305,7 +306,7 @@ export const storyImportRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
 
       return ctx.db.$transaction(async (tx) => {
@@ -334,7 +335,7 @@ export const storyImportRouter = router({
 
         for (const upd of input.typeUpdates) {
           await tx.gameEntity.update({
-            where: { id: upd.entityId, game: { ownerId: ctx.session.user.id } },
+            where: { id: upd.entityId, ...nestedGameAccessWhere(ctx.session.user.id) },
             data: { type: upd.type },
           });
         }

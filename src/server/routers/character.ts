@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const characterRouter = router({
   list: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.gameEntity.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: {
           relationshipsFrom: { include: { toEntity: true } },
           relationshipsTo: { include: { fromEntity: true } },
@@ -21,7 +22,7 @@ export const characterRouter = router({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.gameEntity.findFirst({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: {
           relationshipsFrom: { include: { toEntity: true, plotline: true } },
           relationshipsTo: { include: { fromEntity: true, plotline: true } },
@@ -44,7 +45,7 @@ export const characterRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       return ctx.db.gameEntity.create({ data: input });
     }),
@@ -66,7 +67,7 @@ export const characterRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       const data = input.characters.map((c) => ({ ...c, gameId: input.gameId }));
       return ctx.db.gameEntity.createMany({ data });
@@ -87,7 +88,7 @@ export const characterRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.gameEntity.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -96,7 +97,7 @@ export const characterRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.gameEntity.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 });

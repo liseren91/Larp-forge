@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure } from "../trpc";
+import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 
 export const relationshipRouter = router({
   list: protectedProcedure
     .input(z.object({ gameId: z.string() }))
     .query(async ({ ctx, input }) => {
       return ctx.db.relationship.findMany({
-        where: { gameId: input.gameId, game: { ownerId: ctx.session.user.id } },
+        where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         include: { fromEntity: true, toEntity: true, plotline: true },
         orderBy: { createdAt: "asc" },
       });
@@ -29,7 +30,7 @@ export const relationshipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await ctx.db.game.findFirstOrThrow({
-        where: { id: input.gameId, ownerId: ctx.session.user.id },
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
       });
       return ctx.db.relationship.create({ data: input });
     }),
@@ -50,7 +51,7 @@ export const relationshipRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       return ctx.db.relationship.update({
-        where: { id, game: { ownerId: ctx.session.user.id } },
+        where: { id, ...nestedGameAccessWhere(ctx.session.user.id) },
         data,
       });
     }),
@@ -59,7 +60,7 @@ export const relationshipRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.db.relationship.delete({
-        where: { id: input.id, game: { ownerId: ctx.session.user.id } },
+        where: { id: input.id, ...nestedGameAccessWhere(ctx.session.user.id) },
       });
     }),
 });

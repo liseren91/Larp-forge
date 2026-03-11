@@ -76,6 +76,20 @@ export default function LandingPage() {
           </div>
         </section>
       </main>
+
+      <footer className="border-t border-zinc-800/50 py-8">
+        <p className="text-center text-sm text-zinc-500">
+          Если у вас что-то сломалось или вы хотите дать денег на оплату нейронок, напишите в TG{" "}
+          <a
+            href="https://t.me/liseren"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-amber-500 hover:text-amber-400 transition-colors"
+          >
+            @liseren
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
