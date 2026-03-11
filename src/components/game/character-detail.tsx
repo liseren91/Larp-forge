@@ -12,6 +12,7 @@ import { AiTextarea } from "@/components/ui/ai-textarea";
 import { Pencil, Trash2, Plus, Sparkles, Link2, Save, X } from "lucide-react";
 import { RelationshipEditor } from "./relationship-editor";
 import { BriefPanel } from "./brief-panel";
+import { CustomFieldsPanel } from "./custom-fields-panel";
 
 interface Props {
   characterId: string;
@@ -23,7 +24,7 @@ interface Props {
 export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [showAddRel, setShowAddRel] = useState(false);
-  const [activeTab, setActiveTab] = useState<"info" | "relationships" | "brief">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "attributes" | "relationships" | "brief">("info");
 
   const char = trpc.character.getById.useQuery({ id: characterId });
   const updateChar = trpc.character.update.useMutation({
@@ -89,7 +90,7 @@ export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Pro
       </div>
 
       <div className="mb-6 flex gap-1 border-b border-zinc-800">
-        {(["info", "relationships", "brief"] as const).map((tab) => (
+        {(["info", "attributes", "relationships", "brief"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -99,7 +100,13 @@ export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Pro
                 : "border-transparent text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            {tab === "info" ? "Info" : tab === "relationships" ? `Relationships (${allRels.length})` : "Brief"}
+            {tab === "info"
+              ? "Info"
+              : tab === "attributes"
+              ? "Attributes"
+              : tab === "relationships"
+              ? `Relationships (${allRels.length})`
+              : "Brief"}
           </button>
         ))}
       </div>
@@ -123,6 +130,10 @@ export function CharacterDetail({ characterId, gameId, onDelete, onUpdate }: Pro
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === "attributes" && (
+        <CustomFieldsPanel characterId={characterId} gameId={gameId} />
       )}
 
       {activeTab === "relationships" && (

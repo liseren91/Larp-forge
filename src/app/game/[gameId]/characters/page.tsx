@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AiInput } from "@/components/ui/ai-input";
 import { AiTextarea } from "@/components/ui/ai-textarea";
-import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen } from "lucide-react";
+import { Plus, Users, Pencil, Trash2, Link2, Sparkles, UsersRound, BookOpen, FileSpreadsheet, MoreVertical } from "lucide-react";
 import { CharacterDetail } from "@/components/game/character-detail";
 import { MassCreatePanel } from "@/components/game/mass-create-panel";
 import { StoryImportPanel } from "@/components/game/story-import-panel";
+import { CsvPanel } from "@/components/game/csv-panel";
 
 type NewCharacter = {
   name: string;
@@ -28,9 +29,13 @@ const emptyChar: NewCharacter = { name: "", type: "CHARACTER", faction: "", arch
 
 export default function CharactersPage() {
   const { gameId } = useParams() as { gameId: string };
+  const searchParams = useSearchParams();
+  const openId = searchParams.get("open");
   const [showCreate, setShowCreate] = useState(false);
   const [showMassCreate, setShowMassCreate] = useState(false);
   const [showStoryImport, setShowStoryImport] = useState(false);
+  const [showCsv, setShowCsv] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [newChar, setNewChar] = useState<NewCharacter>(emptyChar);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
@@ -65,22 +70,78 @@ export default function CharactersPage() {
     if (f) factionColorMap[f] = colors[i % colors.length];
   });
 
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showMoreMenu]);
+
+  useEffect(() => {
+    if (openId && characters.data?.some((c) => c.id === openId)) {
+      setSelectedId(openId);
+    }
+  }, [openId, characters.data]);
+
   return (
     <div className="flex h-screen">
-      <div className="w-80 flex-shrink-0 border-r border-zinc-800 flex flex-col">
-        <div className="border-b border-zinc-800 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Characters</h2>
-            <div className="flex gap-1">
-              <Button size="sm" onClick={() => setShowCreate(true)}>
+      <div className="w-96 flex-shrink-0 border-r border-zinc-800 flex flex-col">
+        <div className="border-b border-zinc-800 p-4 overflow-visible">
+          <div className="mb-3">
+            <h2 className="font-semibold mb-2">Characters</h2>
+            <div className="flex gap-1 shrink-0" ref={moreMenuRef}>
+              <Button size="sm" onClick={() => setShowCreate(true)} title="Add character">
                 <Plus size={14} className="mr-1" /> Add
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowMassCreate(true)}>
-                <UsersRound size={14} className="mr-1" /> Mass
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setShowStoryImport(true)}>
-                <BookOpen size={14} className="mr-1" /> Import
-              </Button>
+              <div className="relative">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowMoreMenu((v) => !v)}
+                  title="Mass create, Import, CSV"
+                >
+                  <MoreVertical size={14} className="mr-1" /> More
+                </Button>
+                {showMoreMenu && (
+                  <div className="absolute top-full left-0 mt-1 z-50 min-w-[140px] rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMassCreate(true);
+                        setShowMoreMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                    >
+                      <UsersRound size={14} /> Mass create
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStoryImport(true);
+                        setShowMoreMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                    >
+                      <BookOpen size={14} /> Import from story
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCsv(true);
+                        setShowMoreMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                    >
+                      <FileSpreadsheet size={14} /> CSV import/export
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <Input
@@ -173,6 +234,13 @@ export default function CharactersPage() {
         onClose={() => setShowStoryImport(false)}
         gameId={gameId}
         onCreated={() => characters.refetch()}
+      />
+
+      <CsvPanel
+        open={showCsv}
+        onClose={() => setShowCsv(false)}
+        gameId={gameId}
+        onImported={() => characters.refetch()}
       />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Character">

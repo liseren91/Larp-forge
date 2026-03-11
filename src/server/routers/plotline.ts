@@ -69,6 +69,31 @@ export const plotlineRouter = router({
       return ctx.db.plotlineEntity.create({ data: input });
     }),
 
+  assignEntities: protectedProcedure
+    .input(
+      z.object({
+        plotlineId: z.string(),
+        entityIds: z.array(z.string()).min(1).max(200),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.plotline.findFirstOrThrow({
+        where: { id: input.plotlineId, game: { ownerId: ctx.session.user.id } },
+      });
+      const existing = await ctx.db.plotlineEntity.findMany({
+        where: { plotlineId: input.plotlineId, entityId: { in: input.entityIds } },
+        select: { entityId: true },
+      });
+      const existingIds = new Set(existing.map((e) => e.entityId));
+      const toAdd = input.entityIds.filter((id) => !existingIds.has(id));
+      if (toAdd.length === 0) return { added: 0 };
+      await ctx.db.plotlineEntity.createMany({
+        data: toAdd.map((entityId) => ({ plotlineId: input.plotlineId, entityId })),
+        skipDuplicates: true,
+      });
+      return { added: toAdd.length };
+    }),
+
   removeEntity: protectedProcedure
     .input(z.object({ plotlineId: z.string(), entityId: z.string() }))
     .mutation(async ({ ctx, input }) => {

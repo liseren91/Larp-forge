@@ -2,28 +2,57 @@ import { getServerSession } from "next-auth";
 import { jsonrepair } from "jsonrepair";
 import { authOptions } from "@/lib/auth";
 import { buildGameContext } from "@/lib/ai/context-builder";
-import { SYSTEM_PROMPT_EXTRACT_STORY_GRAPH } from "@/lib/ai/prompts";
+import { SYSTEM_PROMPT_EXTRACT_PLOTLINES } from "@/lib/ai/prompts";
 import { chatCompletion } from "@/lib/ai/llm-client";
 import { db } from "@/lib/db";
 
 const MAX_TEXT_LENGTH = 30_000;
 
-function extractAndParseJson(response: string): { characters: unknown[]; relationships: unknown[] } {
+interface ExtractedCharacter {
+  tempId: string;
+  name: string;
+  suggestedType: string;
+  faction?: string | null;
+  archetype?: string | null;
+  description?: string | null;
+  matchedEntityId?: string | null;
+  confidence: number;
+}
+
+interface ExtractedRelationship {
+  tempId: string;
+  fromRef: string;
+  toRef: string;
+  typeLabel: string;
+  description?: string | null;
+  intensity: number;
+  bidirectional: boolean;
+}
+
+interface ExtractedPlotline {
+  tempId: string;
+  name: string;
+  type: string;
+  description: string;
+  evidence?: string;
+  characters: ExtractedCharacter[];
+  relationships: ExtractedRelationship[];
+}
+
+function extractAndParseJson(response: string): { plotlines: ExtractedPlotline[] } {
   let raw = response.trim();
 
-  // Extract from markdown code block if present
   const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     raw = codeBlockMatch[1].trim();
   }
 
-  // Find JSON object
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error("No JSON object found in AI response");
   }
 
-  let parsed: { characters?: unknown[]; relationships?: unknown[] };
+  let parsed: { plotlines?: unknown[] };
   try {
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
@@ -36,8 +65,7 @@ function extractAndParseJson(response: string): { characters: unknown[]; relatio
   }
 
   return {
-    characters: Array.isArray(parsed.characters) ? parsed.characters : [],
-    relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
+    plotlines: Array.isArray(parsed.plotlines) ? (parsed.plotlines as ExtractedPlotline[]) : [],
   };
 }
 
@@ -85,15 +113,15 @@ export async function POST(req: Request) {
         ).join("\n")
       : "No existing characters.";
 
-    const existingRelationships = context.relationships.length > 0
-      ? context.relationships.map((r) =>
-          `- ${r.from} ${r.bidirectional ? "↔" : "→"} ${r.to}: ${r.type}`
+    const existingPlotlines = context.plotlines.length > 0
+      ? context.plotlines.map((p) =>
+          `- "${p.name}" (${p.type}): ${p.characters.join(", ") || "no characters"}`
         ).join("\n")
-      : "No existing relationships.";
+      : "No existing plotlines.";
 
     const response = await chatCompletion(
       [
-        { role: "system", content: SYSTEM_PROMPT_EXTRACT_STORY_GRAPH },
+        { role: "system", content: SYSTEM_PROMPT_EXTRACT_PLOTLINES },
         {
           role: "user",
           content: `## Game
@@ -102,13 +130,13 @@ ${context.gameSummary}
 ## Existing Characters
 ${existingEntities}
 
-## Existing Relationships
-${existingRelationships}
+## Existing Plotlines
+${existingPlotlines}
 
-## Story Document to Analyze
+## Document to Analyze
 ${truncated}
 
-Extract all characters and relationships from the story document above. Match characters to existing ones where possible. Respond with ONLY the JSON object.`,
+Extract all major plotlines from the document above. For each plotline, identify the characters involved and the key relationships between them. Match characters to existing ones where possible. Respond with ONLY the JSON object.`,
         },
       ],
       { maxTokens: 8192 }
@@ -117,7 +145,7 @@ Extract all characters and relationships from the story document above. Match ch
     const parsed = extractAndParseJson(response);
     return Response.json(parsed);
   } catch (err: any) {
-    console.error("Extract story graph error:", err);
+    console.error("Extract plotlines error:", err);
     return Response.json({ error: err.message ?? "Extraction failed" }, { status: 500 });
   }
 }

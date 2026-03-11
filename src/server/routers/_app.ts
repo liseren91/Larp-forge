@@ -8,6 +8,11 @@ import { chatRouter } from "./chat";
 import { fileRouter } from "./file";
 import { auditRouter } from "./audit";
 import { storyImportRouter } from "./story-import";
+import { customFieldsRouter } from "./custom-fields";
+import { subRolesRouter } from "./sub-roles";
+import { plotlineMatrixRouter } from "./plotline-matrix";
+import { briefPipelineRouter } from "./brief-pipeline";
+import { csvRouter } from "./csv";
 
 export const appRouter = router({
   game: gameRouter,
@@ -19,6 +24,11 @@ export const appRouter = router({
   file: fileRouter,
   audit: auditRouter,
   storyImport: storyImportRouter,
+  customFields: customFieldsRouter,
+  subRoles: subRolesRouter,
+  plotlineMatrix: plotlineMatrixRouter,
+  briefPipeline: briefPipelineRouter,
+  csv: csvRouter,
 });
 
 export type AppRouter = typeof appRouter;
