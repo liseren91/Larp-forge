@@ -25,6 +25,32 @@ interface Props {
 
 type Tab = "export" | "import";
 type DataKind = "characters" | "relationships" | "characters-matrix";
+const CHARACTER_EXPORT_FIELD_OPTIONS = [
+  { key: "name", label: "Name" },
+  { key: "type", label: "Type" },
+  { key: "faction", label: "Faction" },
+  { key: "archetype", label: "Archetype" },
+  { key: "description", label: "Description" },
+  { key: "status", label: "Status" },
+] as const;
+const RELATIONSHIP_EXPORT_FIELD_OPTIONS = [
+  { key: "from", label: "From" },
+  { key: "to", label: "To" },
+  { key: "type", label: "Type" },
+  { key: "description", label: "Description" },
+  { key: "intensity", label: "Intensity" },
+  { key: "bidirectional", label: "Bidirectional" },
+] as const;
+const MATRIX_EXPORT_FIELD_OPTIONS = [
+  { key: "id", label: "ID" },
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "type", label: "Type (CHARACTER/NPC)" },
+  { key: "plotlines", label: "All plotline matrix columns" },
+] as const;
+type CharacterExportField = (typeof CHARACTER_EXPORT_FIELD_OPTIONS)[number]["key"];
+type RelationshipExportField = (typeof RELATIONSHIP_EXPORT_FIELD_OPTIONS)[number]["key"];
+type MatrixExportField = (typeof MATRIX_EXPORT_FIELD_OPTIONS)[number]["key"];
 
 export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
   const [tab, setTab] = useState<Tab>("export");
@@ -32,6 +58,15 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
   const [csvText, setCsvText] = useState("");
   const [preview, setPreview] = useState<Record<string, string>[]>([]);
   const [fileName, setFileName] = useState("");
+  const [characterExportFields, setCharacterExportFields] = useState<CharacterExportField[]>(
+    CHARACTER_EXPORT_FIELD_OPTIONS.map((f) => f.key)
+  );
+  const [relationshipExportFields, setRelationshipExportFields] = useState<RelationshipExportField[]>(
+    RELATIONSHIP_EXPORT_FIELD_OPTIONS.map((f) => f.key)
+  );
+  const [matrixExportFields, setMatrixExportFields] = useState<MatrixExportField[]>(
+    MATRIX_EXPORT_FIELD_OPTIONS.map((f) => f.key)
+  );
   const [importResult, setImportResult] = useState<{
     success: boolean;
     message: string;
@@ -40,15 +75,15 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const exportChars = trpc.csv.exportCharacters.useQuery(
-    { gameId },
+    { gameId, fields: characterExportFields },
     { enabled: open && tab === "export" && dataKind === "characters" }
   );
   const exportRels = trpc.csv.exportRelationships.useQuery(
-    { gameId },
+    { gameId, fields: relationshipExportFields },
     { enabled: open && tab === "export" && dataKind === "relationships" }
   );
   const exportCharsMatrix = trpc.csv.exportCharactersMatrix.useQuery(
-    { gameId },
+    { gameId, fields: matrixExportFields },
     { enabled: open && tab === "export" && dataKind === "characters-matrix" }
   );
 
@@ -156,6 +191,46 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
         : exportRels.data;
   const isImporting = importChars.isPending || importRels.isPending || importCharsMatrix.isPending;
   const previewHeaders = preview.length > 0 ? Object.keys(preview[0]) : [];
+  const exportFieldOptions =
+    dataKind === "characters"
+      ? CHARACTER_EXPORT_FIELD_OPTIONS
+      : dataKind === "characters-matrix"
+        ? MATRIX_EXPORT_FIELD_OPTIONS
+        : RELATIONSHIP_EXPORT_FIELD_OPTIONS;
+  const selectedExportFields =
+    dataKind === "characters"
+      ? characterExportFields
+      : dataKind === "characters-matrix"
+        ? matrixExportFields
+        : relationshipExportFields;
+  const selectedExportFieldSet = new Set<string>(selectedExportFields as string[]);
+
+  const toggleExportField = (field: string) => {
+    const apply = (prev: string[]) => {
+      if (prev.includes(field)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((f) => f !== field);
+      }
+      return [...prev, field];
+    };
+    if (dataKind === "characters") {
+      setCharacterExportFields((prev) => apply(prev) as CharacterExportField[]);
+    } else if (dataKind === "characters-matrix") {
+      setMatrixExportFields((prev) => apply(prev) as MatrixExportField[]);
+    } else {
+      setRelationshipExportFields((prev) => apply(prev) as RelationshipExportField[]);
+    }
+  };
+
+  const selectAllExportFields = () => {
+    if (dataKind === "characters") {
+      setCharacterExportFields(CHARACTER_EXPORT_FIELD_OPTIONS.map((f) => f.key));
+    } else if (dataKind === "characters-matrix") {
+      setMatrixExportFields(MATRIX_EXPORT_FIELD_OPTIONS.map((f) => f.key));
+    } else {
+      setRelationshipExportFields(RELATIONSHIP_EXPORT_FIELD_OPTIONS.map((f) => f.key));
+    }
+  };
 
   return (
     <Modal
@@ -227,6 +302,39 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
         {/* EXPORT TAB */}
         {tab === "export" && (
           <div className="space-y-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-800/30 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-medium">Export fields</p>
+                <Button variant="ghost" onClick={selectAllExportFields}>
+                  Select all
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {exportFieldOptions.map((field) => {
+                  const checked = selectedExportFieldSet.has(field.key);
+                  const isOnlySelected = checked && selectedExportFields.length === 1;
+                  return (
+                    <label
+                      key={field.key}
+                      className="flex items-center gap-2 rounded-md border border-zinc-700 px-2 py-1.5 text-sm text-zinc-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={isOnlySelected}
+                        onChange={() => toggleExportField(field.key)}
+                        className="h-4 w-4 accent-amber-500"
+                      />
+                      <span>{field.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                Selected: {selectedExportFields.length}
+              </p>
+            </div>
+
             <div className="rounded-lg border border-zinc-800 bg-zinc-800/30 p-4">
               <div className="flex items-center justify-between">
                 <div>

@@ -4,7 +4,7 @@ import { gameAccessWhere, nestedGameAccessWhere } from "../access";
 import { generateCsv, parseCsv } from "@/lib/csv";
 import { TRPCError } from "@trpc/server";
 
-const CHARACTER_HEADERS = ["name", "type", "faction", "archetype", "description", "status"];
+const CHARACTER_HEADERS = ["name", "type", "faction", "archetype", "description", "status"] as const;
 const RELATIONSHIP_HEADERS = [
   "from",
   "to",
@@ -12,7 +12,8 @@ const RELATIONSHIP_HEADERS = [
   "description",
   "intensity",
   "bidirectional",
-];
+ ] as const;
+const MATRIX_EXPORT_FIELDS = ["id", "name", "description", "type", "plotlines"] as const;
 
 const VALID_ENTITY_TYPES = ["CHARACTER", "NPC"] as const;
 const VALID_RELATIONSHIP_TYPES = [
@@ -23,23 +24,39 @@ const VALID_STATUSES = ["DRAFT", "IN_PROGRESS", "READY"] as const;
 
 export const csvRouter = router({
   exportCharacters: protectedProcedure
-    .input(z.object({ gameId: z.string() }))
+    .input(
+      z.object({
+        gameId: z.string(),
+        fields: z.array(z.enum(CHARACTER_HEADERS)).optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const entities = await ctx.db.gameEntity.findMany({
         where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
         orderBy: { createdAt: "asc" },
       });
 
-      const rows = entities.map((e) => [
-        e.name,
-        e.type,
-        e.faction ?? "",
-        e.archetype ?? "",
-        e.description ?? "",
-        e.status,
-      ]);
+      const selectedFields = input.fields?.length ? input.fields : [...CHARACTER_HEADERS];
+      if (selectedFields.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "At least one character export field must be selected.",
+        });
+      }
 
-      return { csv: generateCsv(CHARACTER_HEADERS, rows), count: entities.length };
+      const rows = entities.map((e) => {
+        const fieldMap: Record<(typeof CHARACTER_HEADERS)[number], string> = {
+          name: e.name,
+          type: e.type,
+          faction: e.faction ?? "",
+          archetype: e.archetype ?? "",
+          description: e.description ?? "",
+          status: e.status,
+        };
+        return selectedFields.map((field) => fieldMap[field]);
+      });
+
+      return { csv: generateCsv(selectedFields, rows), count: entities.length };
     }),
 
   importCharacters: protectedProcedure
@@ -108,7 +125,12 @@ export const csvRouter = router({
     }),
 
   exportRelationships: protectedProcedure
-    .input(z.object({ gameId: z.string() }))
+    .input(
+      z.object({
+        gameId: z.string(),
+        fields: z.array(z.enum(RELATIONSHIP_HEADERS)).optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const relationships = await ctx.db.relationship.findMany({
         where: { gameId: input.gameId, ...nestedGameAccessWhere(ctx.session.user.id) },
@@ -116,16 +138,27 @@ export const csvRouter = router({
         orderBy: { createdAt: "asc" },
       });
 
-      const rows = relationships.map((r) => [
-        r.fromEntity.name,
-        r.toEntity.name,
-        r.type,
-        r.description ?? "",
-        String(r.intensity),
-        r.bidirectional ? "true" : "false",
-      ]);
+      const selectedFields = input.fields?.length ? input.fields : [...RELATIONSHIP_HEADERS];
+      if (selectedFields.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "At least one relationship export field must be selected.",
+        });
+      }
 
-      return { csv: generateCsv(RELATIONSHIP_HEADERS, rows), count: relationships.length };
+      const rows = relationships.map((r) => {
+        const fieldMap: Record<(typeof RELATIONSHIP_HEADERS)[number], string> = {
+          from: r.fromEntity.name,
+          to: r.toEntity.name,
+          type: r.type,
+          description: r.description ?? "",
+          intensity: String(r.intensity),
+          bidirectional: r.bidirectional ? "true" : "false",
+        };
+        return selectedFields.map((field) => fieldMap[field]);
+      });
+
+      return { csv: generateCsv(selectedFields, rows), count: relationships.length };
     }),
 
   importRelationships: protectedProcedure
@@ -218,7 +251,12 @@ export const csvRouter = router({
     }),
 
   exportCharactersMatrix: protectedProcedure
-    .input(z.object({ gameId: z.string() }))
+    .input(
+      z.object({
+        gameId: z.string(),
+        fields: z.array(z.enum(MATRIX_EXPORT_FIELDS)).optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const game = await ctx.db.game.findFirstOrThrow({
         where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
@@ -236,20 +274,37 @@ export const csvRouter = router({
         select: { id: true, name: true },
       });
 
-      const fixedHeaders = ["id", "name", "description", "type"];
-      const plotlineHeaders = plotlines.map(
-        (p) => `${p.name} [plotline:${p.id}]`
+      const selectedFields = input.fields?.length ? input.fields : [...MATRIX_EXPORT_FIELDS];
+      if (selectedFields.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "At least one matrix export field must be selected.",
+        });
+      }
+
+      const includePlotlines = selectedFields.includes("plotlines");
+      const fixedHeaders = selectedFields.filter(
+        (field): field is "id" | "name" | "description" | "type" => field !== "plotlines"
       );
+      const plotlineHeaders = includePlotlines
+        ? plotlines.map((p) => `${p.name} [plotline:${p.id}]`)
+        : [];
       const headers = [...fixedHeaders, ...plotlineHeaders];
 
       const rows = entities.map((e) => {
         const assignedIds = new Set(
           e.plotlineEntities.map((pe) => pe.plotlineId)
         );
-        const fixed = [e.id, e.name, e.description ?? "", e.type];
-        const plotlineCells = plotlines.map((p) =>
-          assignedIds.has(p.id) ? "1" : "0"
-        );
+        const fieldMap = {
+          id: e.id,
+          name: e.name,
+          description: e.description ?? "",
+          type: e.type,
+        };
+        const fixed = fixedHeaders.map((field) => fieldMap[field]);
+        const plotlineCells = includePlotlines
+          ? plotlines.map((p) => (assignedIds.has(p.id) ? "1" : "0"))
+          : [];
         return [...fixed, ...plotlineCells];
       });
 
