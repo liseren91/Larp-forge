@@ -13,6 +13,7 @@ import {
   Link2,
   AlertTriangle,
   CheckCircle2,
+  LayoutGrid,
 } from "lucide-react";
 
 interface Props {
@@ -23,7 +24,7 @@ interface Props {
 }
 
 type Tab = "export" | "import";
-type DataKind = "characters" | "relationships";
+type DataKind = "characters" | "relationships" | "characters-matrix";
 
 export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
   const [tab, setTab] = useState<Tab>("export");
@@ -45,6 +46,10 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
   const exportRels = trpc.csv.exportRelationships.useQuery(
     { gameId },
     { enabled: open && tab === "export" && dataKind === "relationships" }
+  );
+  const exportCharsMatrix = trpc.csv.exportCharactersMatrix.useQuery(
+    { gameId },
+    { enabled: open && tab === "export" && dataKind === "characters-matrix" }
   );
 
   const importChars = trpc.csv.importCharacters.useMutation({
@@ -69,9 +74,31 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
       setImportResult({ success: false, message: err.message });
     },
   });
+  const importCharsMatrix = trpc.csv.importCharactersMatrix.useMutation({
+    onSuccess: (data) => {
+      const warnings = [
+        ...(data.skipped ?? []),
+        ...(data.errors ?? []),
+      ];
+      setImportResult({
+        success: true,
+        message: `Updated ${data.updated} of ${data.totalRows} characters.`,
+        warnings: warnings.length > 0 ? warnings : undefined,
+      });
+      onImported();
+    },
+    onError: (err) => {
+      setImportResult({ success: false, message: err.message });
+    },
+  });
 
   const handleDownload = () => {
-    const data = dataKind === "characters" ? exportChars.data : exportRels.data;
+    const data =
+      dataKind === "characters"
+        ? exportChars.data
+        : dataKind === "characters-matrix"
+          ? exportCharsMatrix.data
+          : exportRels.data;
     if (!data) return;
     const blob = new Blob(["\uFEFF" + data.csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -106,6 +133,8 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
     setImportResult(null);
     if (dataKind === "characters") {
       importChars.mutate({ gameId, csvText });
+    } else if (dataKind === "characters-matrix") {
+      importCharsMatrix.mutate({ gameId, csvText });
     } else {
       importRels.mutate({ gameId, csvText });
     }
@@ -119,8 +148,13 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const exportData = dataKind === "characters" ? exportChars.data : exportRels.data;
-  const isImporting = importChars.isPending || importRels.isPending;
+  const exportData =
+    dataKind === "characters"
+      ? exportChars.data
+      : dataKind === "characters-matrix"
+        ? exportCharsMatrix.data
+        : exportRels.data;
+  const isImporting = importChars.isPending || importRels.isPending || importCharsMatrix.isPending;
   const previewHeaders = preview.length > 0 ? Object.keys(preview[0]) : [];
 
   return (
@@ -167,6 +201,17 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
             Characters
           </button>
           <button
+            onClick={() => { setDataKind("characters-matrix"); resetImport(); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              dataKind === "characters-matrix"
+                ? "border-amber-600 bg-amber-600/10 text-amber-400"
+                : "border-zinc-700 text-zinc-400 hover:border-zinc-600"
+            }`}
+          >
+            <LayoutGrid size={14} />
+            Characters + Plotlines
+          </button>
+          <button
             onClick={() => { setDataKind("relationships"); resetImport(); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
               dataKind === "relationships"
@@ -186,11 +231,15 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">
-                    {dataKind === "characters" ? "Character data" : "Relationship data"}
+                    {dataKind === "characters"
+                      ? "Character data"
+                      : dataKind === "characters-matrix"
+                        ? "Characters with plotline matrix"
+                        : "Relationship data"}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">
                     {exportData
-                      ? `${exportData.count} ${dataKind} ready to export`
+                      ? `${exportData.count} ${dataKind === "characters-matrix" ? "characters" : dataKind} ready to export`
                       : "Loading..."}
                   </p>
                 </div>
@@ -208,6 +257,13 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
               <p className="font-medium text-zinc-400">Columns in export:</p>
               {dataKind === "characters" ? (
                 <p>name, type, faction, archetype, description, status</p>
+              ) : dataKind === "characters-matrix" ? (
+                <div>
+                  <p>id, name, description, type, + one column per plotline (1/0)</p>
+                  <p className="mt-1 text-zinc-600">
+                    Edit and re-import to bulk-update characters and their plotline assignments.
+                  </p>
+                </div>
               ) : (
                 <p>from, to, type, description, intensity, bidirectional</p>
               )}
@@ -230,6 +286,16 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
                     Lord Mortenval,CHARACTER,Tremere,Elder,&quot;An ancient vampire...&quot;{"\n"}
                     Guard Captain,NPC,City Watch,Soldier,&quot;Loyal to the crown&quot;
                   </code>
+                </>
+              ) : dataKind === "characters-matrix" ? (
+                <>
+                  <p>Required column: <span className="text-amber-400">id</span> (character ID from export)</p>
+                  <p>Editable: <span className="text-zinc-300">name</span>, <span className="text-zinc-300">description</span>, <span className="text-zinc-300">type</span> (CHARACTER / NPC)</p>
+                  <p>Plotline columns: <span className="text-zinc-300">1</span> = assigned, <span className="text-zinc-300">0</span> = not assigned</p>
+                  <p className="mt-1.5 text-zinc-500">
+                    Export first, edit the CSV, then re-import. Characters are matched by id.
+                    Only existing characters are updated &mdash; no new ones are created.
+                  </p>
                 </>
               ) : (
                 <>
@@ -339,7 +405,9 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
                 <Upload size={14} className="mr-1.5" />
                 {isImporting
                   ? "Importing..."
-                  : `Import ${dataKind}`}
+                  : dataKind === "characters-matrix"
+                    ? "Update characters"
+                    : `Import ${dataKind}`}
               </Button>
             </div>
           </div>

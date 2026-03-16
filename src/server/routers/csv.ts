@@ -216,4 +216,204 @@ export const csvRouter = router({
         warnings: errors.length > 0 ? errors.slice(0, 10) : undefined,
       };
     }),
+
+  exportCharactersMatrix: protectedProcedure
+    .input(z.object({ gameId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const game = await ctx.db.game.findFirstOrThrow({
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
+      });
+
+      const entities = await ctx.db.gameEntity.findMany({
+        where: { gameId: game.id },
+        orderBy: { createdAt: "asc" },
+        include: { plotlineEntities: { select: { plotlineId: true } } },
+      });
+
+      const plotlines = await ctx.db.plotline.findMany({
+        where: { gameId: game.id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true },
+      });
+
+      const fixedHeaders = ["id", "name", "description", "type"];
+      const plotlineHeaders = plotlines.map(
+        (p) => `${p.name} [plotline:${p.id}]`
+      );
+      const headers = [...fixedHeaders, ...plotlineHeaders];
+
+      const rows = entities.map((e) => {
+        const assignedIds = new Set(
+          e.plotlineEntities.map((pe) => pe.plotlineId)
+        );
+        const fixed = [e.id, e.name, e.description ?? "", e.type];
+        const plotlineCells = plotlines.map((p) =>
+          assignedIds.has(p.id) ? "1" : "0"
+        );
+        return [...fixed, ...plotlineCells];
+      });
+
+      return { csv: generateCsv(headers, rows), count: entities.length };
+    }),
+
+  importCharactersMatrix: protectedProcedure
+    .input(
+      z.object({
+        gameId: z.string(),
+        csvText: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const game = await ctx.db.game.findFirstOrThrow({
+        where: { id: input.gameId, ...gameAccessWhere(ctx.session.user.id) },
+      });
+
+      const records = parseCsv(input.csvText);
+      if (records.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "CSV file is empty or has no data rows.",
+        });
+      }
+      if (records.length > 500) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Maximum 500 characters per import.",
+        });
+      }
+
+      const first = records[0];
+      if (!("id" in first)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "CSV must have an 'id' column for character matching.",
+        });
+      }
+
+      const headers = Object.keys(first);
+      const plotlineColumns: { header: string; plotlineId: string }[] = [];
+      for (const h of headers) {
+        const bracketMatch = h.match(/\[plotline:([^\]]+)\]/);
+        if (bracketMatch) {
+          plotlineColumns.push({ header: h, plotlineId: bracketMatch[1] });
+          continue;
+        }
+        const directMatch = h.match(/^plotline:(.+)$/);
+        if (directMatch) {
+          plotlineColumns.push({ header: h, plotlineId: directMatch[1] });
+        }
+      }
+
+      const gamePlotlines = await ctx.db.plotline.findMany({
+        where: { gameId: game.id },
+        select: { id: true },
+      });
+      const validPlotlineIds = new Set(gamePlotlines.map((p) => p.id));
+      const validPlotlineColumns = plotlineColumns.filter((pc) =>
+        validPlotlineIds.has(pc.plotlineId)
+      );
+
+      const existingEntities = await ctx.db.gameEntity.findMany({
+        where: { gameId: game.id },
+        select: { id: true },
+      });
+      const existingIds = new Set(existingEntities.map((e) => e.id));
+
+      const errors: string[] = [];
+      const skipped: string[] = [];
+      let updated = 0;
+
+      await ctx.db.$transaction(async (tx) => {
+        for (let idx = 0; idx < records.length; idx++) {
+          const r = records[idx];
+          const row = idx + 2;
+          const entityId = r.id?.trim();
+
+          if (!entityId) {
+            skipped.push(`Row ${row}: empty id, skipped.`);
+            continue;
+          }
+
+          if (!existingIds.has(entityId)) {
+            skipped.push(
+              `Row ${row}: character id "${entityId}" not found, skipped.`
+            );
+            continue;
+          }
+
+          const rawType = (r.type ?? "").toUpperCase();
+          if (rawType && !VALID_ENTITY_TYPES.includes(rawType as any)) {
+            errors.push(
+              `Row ${row}: invalid type "${r.type}", must be CHARACTER or NPC.`
+            );
+            continue;
+          }
+
+          const updateData: Record<string, unknown> = {};
+          if (r.name?.trim()) updateData.name = r.name.trim();
+          if ("description" in r)
+            updateData.description = r.description?.trim() || null;
+          if (rawType) updateData.type = rawType;
+
+          if (Object.keys(updateData).length > 0) {
+            await tx.gameEntity.update({
+              where: { id: entityId },
+              data: updateData,
+            });
+          }
+
+          if (validPlotlineColumns.length > 0) {
+            const targetPlotlineIds = new Set<string>();
+            for (const pc of validPlotlineColumns) {
+              const val = r[pc.header]?.trim().toLowerCase();
+              if (val === "1" || val === "true" || val === "yes") {
+                targetPlotlineIds.add(pc.plotlineId);
+              }
+            }
+
+            const currentAssignments = await tx.plotlineEntity.findMany({
+              where: {
+                entityId,
+                plotlineId: { in: Array.from(validPlotlineIds) },
+              },
+              select: { id: true, plotlineId: true },
+            });
+
+            const currentPlotlineIds = new Set(
+              currentAssignments.map((a) => a.plotlineId)
+            );
+
+            const toDelete = currentAssignments.filter(
+              (a) => !targetPlotlineIds.has(a.plotlineId)
+            );
+            if (toDelete.length > 0) {
+              await tx.plotlineEntity.deleteMany({
+                where: { id: { in: toDelete.map((d) => d.id) } },
+              });
+            }
+
+            const toAdd = Array.from(targetPlotlineIds).filter(
+              (id) => !currentPlotlineIds.has(id)
+            );
+            if (toAdd.length > 0) {
+              await tx.plotlineEntity.createMany({
+                data: toAdd.map((plotlineId) => ({
+                  plotlineId,
+                  entityId,
+                })),
+              });
+            }
+          }
+
+          updated++;
+        }
+      });
+
+      return {
+        updated,
+        skipped: skipped.length > 0 ? skipped : undefined,
+        errors: errors.length > 0 ? errors : undefined,
+        totalRows: records.length,
+      };
+    }),
 });
