@@ -21,6 +21,22 @@ const VALID_RELATIONSHIP_TYPES = [
   "FAMILY", "MENTORSHIP", "ENMITY", "OTHER",
 ] as const;
 const VALID_STATUSES = ["DRAFT", "IN_PROGRESS", "READY"] as const;
+const DESCRIPTION_PLOTLINE_REGEX =
+  /(?:^|\n)\s*(?:[-*]\s*)?(?:plotline|сюжет|завязка)\s*:\s*(.+?)\s*$/gim;
+
+function extractPlotlineNamesFromDescription(description: string | undefined): string[] {
+  if (!description?.trim()) return [];
+  const matches = description.matchAll(DESCRIPTION_PLOTLINE_REGEX);
+  const names = new Set<string>();
+  for (const match of matches) {
+    const rawName = match[1]?.trim();
+    if (!rawName) continue;
+    const normalizedWhitespace = rawName.replace(/\s+/g, " ");
+    if (!normalizedWhitespace) continue;
+    names.add(normalizedWhitespace);
+  }
+  return Array.from(names);
+}
 
 export const csvRouter = router({
   exportCharacters: protectedProcedure
@@ -361,9 +377,13 @@ export const csvRouter = router({
 
       const gamePlotlines = await ctx.db.plotline.findMany({
         where: { gameId: game.id },
-        select: { id: true },
+        select: { id: true, name: true },
       });
       const validPlotlineIds = new Set(gamePlotlines.map((p) => p.id));
+      const plotlineNameToId = new Map<string, string>();
+      for (const plotline of gamePlotlines) {
+        plotlineNameToId.set(plotline.name.trim().toLowerCase(), plotline.id);
+      }
       const validPlotlineColumns = plotlineColumns.filter((pc) =>
         validPlotlineIds.has(pc.plotlineId)
       );
@@ -377,6 +397,8 @@ export const csvRouter = router({
       const errors: string[] = [];
       const skipped: string[] = [];
       let updated = 0;
+      let createdPlotlines = 0;
+      let linkedFromDescription = 0;
 
       await ctx.db.$transaction(async (tx) => {
         for (let idx = 0; idx < records.length; idx++) {
@@ -417,19 +439,53 @@ export const csvRouter = router({
             });
           }
 
-          if (validPlotlineColumns.length > 0) {
-            const targetPlotlineIds = new Set<string>();
-            for (const pc of validPlotlineColumns) {
-              const val = r[pc.header]?.trim().toLowerCase();
-              if (val === "1" || val === "true" || val === "yes") {
-                targetPlotlineIds.add(pc.plotlineId);
-              }
-            }
+          const targetPlotlineIds = new Set<string>();
+          const extractedPlotlineIds = new Set<string>();
 
+          for (const pc of validPlotlineColumns) {
+            const val = r[pc.header]?.trim().toLowerCase();
+            if (val === "1" || val === "true" || val === "yes") {
+              targetPlotlineIds.add(pc.plotlineId);
+            }
+          }
+
+          if ("description" in r) {
+            const extractedPlotlineNames = extractPlotlineNamesFromDescription(r.description);
+            for (const plotlineName of extractedPlotlineNames) {
+              if (plotlineName.length > 200) {
+                errors.push(
+                  `Row ${row}: extracted plotline "${plotlineName.slice(0, 50)}..." is longer than 200 characters.`
+                );
+                continue;
+              }
+
+              const normalizedName = plotlineName.toLowerCase();
+              let plotlineId = plotlineNameToId.get(normalizedName);
+              if (!plotlineId) {
+                const created = await tx.plotline.create({
+                  data: {
+                    gameId: game.id,
+                    name: plotlineName,
+                    type: "OTHER",
+                  },
+                  select: { id: true },
+                });
+                plotlineId = created.id;
+                plotlineNameToId.set(normalizedName, created.id);
+                validPlotlineIds.add(created.id);
+                createdPlotlines++;
+              }
+              targetPlotlineIds.add(plotlineId);
+              extractedPlotlineIds.add(plotlineId);
+            }
+          }
+
+          if (validPlotlineColumns.length > 0 || targetPlotlineIds.size > 0) {
+            const scopedPlotlineIds = Array.from(validPlotlineIds);
             const currentAssignments = await tx.plotlineEntity.findMany({
               where: {
                 entityId,
-                plotlineId: { in: Array.from(validPlotlineIds) },
+                plotlineId: { in: scopedPlotlineIds },
               },
               select: { id: true, plotlineId: true },
             });
@@ -457,6 +513,9 @@ export const csvRouter = router({
                   entityId,
                 })),
               });
+              for (const addedId of toAdd) {
+                if (extractedPlotlineIds.has(addedId)) linkedFromDescription++;
+              }
             }
           }
 
@@ -468,6 +527,8 @@ export const csvRouter = router({
         updated,
         skipped: skipped.length > 0 ? skipped : undefined,
         errors: errors.length > 0 ? errors : undefined,
+        createdPlotlines,
+        linkedFromDescription,
         totalRows: records.length,
       };
     }),

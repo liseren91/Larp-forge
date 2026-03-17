@@ -115,9 +115,17 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
         ...(data.skipped ?? []),
         ...(data.errors ?? []),
       ];
+      const additions: string[] = [];
+      if (data.createdPlotlines > 0) {
+        additions.push(`created ${data.createdPlotlines} new plotlines`);
+      }
+      if (data.linkedFromDescription > 0) {
+        additions.push(`linked ${data.linkedFromDescription} plotline assignments from description`);
+      }
+      const additionsText = additions.length > 0 ? ` (${additions.join(", ")})` : "";
       setImportResult({
         success: true,
-        message: `Updated ${data.updated} of ${data.totalRows} characters.`,
+        message: `Updated ${data.updated} of ${data.totalRows} characters${additionsText}.`,
         warnings: warnings.length > 0 ? warnings : undefined,
       });
       onImported();
@@ -400,6 +408,9 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
                   <p>Required column: <span className="text-amber-400">id</span> (character ID from export)</p>
                   <p>Editable: <span className="text-zinc-300">name</span>, <span className="text-zinc-300">description</span>, <span className="text-zinc-300">type</span> (CHARACTER / NPC)</p>
                   <p>Plotline columns: <span className="text-zinc-300">1</span> = assigned, <span className="text-zinc-300">0</span> = not assigned</p>
+                  <p className="mt-1">
+                    Auto-detect from description lines: <span className="text-zinc-300">Plotline: ...</span>, <span className="text-zinc-300">Сюжет: ...</span>, or <span className="text-zinc-300">Завязка: ...</span>
+                  </p>
                   <p className="mt-1.5 text-zinc-500">
                     Export first, edit the CSV, then re-import. Characters are matched by id.
                     Only existing characters are updated &mdash; no new ones are created.
