@@ -36,6 +36,7 @@ export const fileRouter = router({
         id: z.string(),
         description: z.string().optional(),
         category: z.enum(["DESIGN_DOC", "RULESET", "REFERENCE", "EXPORT"]).optional(),
+        extractedText: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

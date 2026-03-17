@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,8 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [storyText, setStoryText] = useState("");
+  const [originalStoryText, setOriginalStoryText] = useState("");
 
   // Step 2–3 — candidates
   const [characters, setCharacters] = useState<CharacterCandidate[]>([]);
@@ -104,8 +106,26 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
     },
     onError: (err) => setError(err.message),
   });
+  const updateFileMutation = trpc.file.update.useMutation({
+    onError: (err) => setError(err.message),
+  });
 
   const filesWithText = files.data?.filter((f) => f.extractedText) ?? [];
+  const selectedFile = useMemo(
+    () => filesWithText.find((f) => f.id === selectedFileId) ?? null,
+    [filesWithText, selectedFileId]
+  );
+
+  useEffect(() => {
+    if (!selectedFileId) {
+      setStoryText("");
+      setOriginalStoryText("");
+      return;
+    }
+    const text = selectedFile?.extractedText ?? "";
+    setStoryText(text);
+    setOriginalStoryText(text);
+  }, [selectedFileId, selectedFile?.extractedText]);
 
   /* ─── Upload handler ─── */
   const handleUpload = useCallback(
@@ -124,6 +144,8 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
         if (data.id) {
           await files.refetch();
           setSelectedFileId(data.id);
+          setStoryText(typeof data.extractedText === "string" ? data.extractedText : "");
+          setOriginalStoryText(typeof data.extractedText === "string" ? data.extractedText : "");
         } else {
           setError(data.error ?? "Upload failed");
         }
@@ -139,12 +161,26 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
   /* ─── Analyze handler ─── */
   const handleAnalyze = async () => {
     setError(null);
+    const textForAnalysis = storyText.trim();
+    if (!textForAnalysis) {
+      setError("Story text is empty. Select a file with extracted text or edit the text first.");
+      return;
+    }
     setStep("analyzing");
     try {
+      if (selectedFileId && storyText !== originalStoryText) {
+        await updateFileMutation.mutateAsync({
+          id: selectedFileId,
+          extractedText: storyText,
+        });
+        setOriginalStoryText(storyText);
+        await files.refetch();
+      }
+
       const res = await fetch("/api/ai/extract-story-graph", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId, fileId: selectedFileId }),
+        body: JSON.stringify({ gameId, fileId: selectedFileId, text: storyText }),
       });
       const data = await res.json();
       if (data.error) {
@@ -264,6 +300,8 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
     setTimeout(() => {
       setStep("select-doc");
       setSelectedFileId(null);
+      setStoryText("");
+      setOriginalStoryText("");
       setCharacters([]);
       setRelationships([]);
       setError(null);
@@ -321,7 +359,7 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
       {step === "select-doc" && (
         <div className="space-y-4">
           <p className="text-sm text-zinc-400">
-            Choose an existing document or upload a new story file. The AI will analyze it and extract characters and relationships.
+            Choose an existing document or upload a new story file. You can edit its extracted text, save it back to the system, and re-run character recognition.
           </p>
 
           {filesWithText.length > 0 && (
@@ -378,13 +416,44 @@ export function StoryImportPanel({ open, onClose, gameId, onCreated }: Props) {
             <p className="mt-1 text-xs text-zinc-600">PDF, DOCX, TXT, MD</p>
           </div>
 
+          {selectedFileId && (
+            <div className="space-y-2 border-t border-zinc-800 pt-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-zinc-300">
+                  Story text editor
+                </label>
+                <div className="text-xs text-zinc-500">
+                  {storyText.length} chars
+                  {storyText !== originalStoryText ? " • unsaved changes" : ""}
+                </div>
+              </div>
+              <textarea
+                value={storyText}
+                onChange={(e) => setStoryText(e.target.value)}
+                rows={10}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                placeholder="Edit story text before analysis..."
+              />
+              {selectedFile?.name && (
+                <p className="text-xs text-zinc-600">
+                  Source file: {selectedFile.name}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end pt-2">
             <Button
               onClick={handleAnalyze}
-              disabled={!selectedFileId || uploading}
+              disabled={
+                !selectedFileId ||
+                uploading ||
+                !storyText.trim() ||
+                updateFileMutation.isPending
+              }
             >
               <Sparkles size={14} className="mr-1" />
-              Analyze Story
+              {updateFileMutation.isPending ? "Saving text..." : "Save & Re-analyze"}
               <ArrowRight size={14} className="ml-1" />
             </Button>
           </div>
