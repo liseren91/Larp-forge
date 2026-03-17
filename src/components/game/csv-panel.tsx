@@ -93,7 +93,15 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
 
   const importChars = trpc.csv.importCharacters.useMutation({
     onSuccess: (data) => {
-      setImportResult({ success: true, message: `Imported ${data.imported} characters.` });
+      const details: string[] = [];
+      if ((data as any).updated) details.push(`updated ${(data as any).updated}`);
+      if ((data as any).updatedAttributes) details.push(`updated ${(data as any).updatedAttributes} attributes`);
+      const detailsText = details.length > 0 ? ` (${details.join(", ")})` : "";
+      setImportResult({
+        success: true,
+        message: `Imported ${data.imported} characters${detailsText}.`,
+        warnings: (data as any).warnings,
+      });
       onImported();
     },
     onError: (err) => {

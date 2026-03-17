@@ -122,41 +122,231 @@ export const csvRouter = router({
         });
       }
 
-      const errors: string[] = [];
-      const data = records.map((r, idx) => {
-        const row = idx + 2;
-        if (!r.name?.trim()) {
-          errors.push(`Row ${row}: name is required.`);
+      const headers = Object.keys(first);
+      const normalizedHeaderToOriginal = new Map<string, string>();
+      for (const header of headers) {
+        normalizedHeaderToOriginal.set(header.trim().toLowerCase(), header);
+      }
+      const explicitAttributeColumns: { header: string; slug: string }[] = [];
+      for (const h of headers) {
+        const attrMatch = h.match(/^attr(?:ibute)?:(.+)$/);
+        if (attrMatch) {
+          explicitAttributeColumns.push({ header: h, slug: attrMatch[1].trim().toLowerCase() });
         }
-        const rawType = (r.type ?? "CHARACTER").toUpperCase();
-        const type = VALID_ENTITY_TYPES.includes(rawType as any)
-          ? (rawType as (typeof VALID_ENTITY_TYPES)[number])
-          : "CHARACTER";
-        const rawStatus = (r.status ?? "DRAFT").toUpperCase();
-        const status = VALID_STATUSES.includes(rawStatus as any)
-          ? (rawStatus as (typeof VALID_STATUSES)[number])
-          : "DRAFT";
-
-        return {
-          gameId: input.gameId,
-          name: r.name?.trim() ?? "",
-          type,
-          faction: r.faction?.trim() || null,
-          archetype: r.archetype?.trim() || null,
-          description: r.description?.trim() || null,
-          status,
-        };
-      });
-
-      if (errors.length > 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: errors.slice(0, 10).join("\n"),
-        });
       }
 
-      const result = await ctx.db.gameEntity.createMany({ data });
-      return { imported: result.count };
+      const customFieldDefinitions = await ctx.db.customFieldDefinition.findMany({
+        where: { gameId: input.gameId },
+        include: { options: { select: { id: true, label: true } } },
+      });
+      const definitionBySlug = new Map(
+        customFieldDefinitions.map((def) => [def.slug.trim().toLowerCase(), def] as const)
+      );
+      const definitionByName = new Map(
+        customFieldDefinitions.map((def) => [def.name.trim().toLowerCase(), def] as const)
+      );
+      const resolvedAttributeColumns = explicitAttributeColumns
+        .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) || definitionByName.get(col.slug) }))
+        .filter((col): col is { header: string; slug: string; definition: (typeof customFieldDefinitions)[number] } => !!col.definition);
+      const usedDefinitionIds = new Set(resolvedAttributeColumns.map((col) => col.definition.id));
+      for (const [normalizedHeader, originalHeader] of normalizedHeaderToOriginal.entries()) {
+        if (
+          normalizedHeader === "id" ||
+          normalizedHeader === "name" ||
+          normalizedHeader === "description" ||
+          normalizedHeader === "type" ||
+          normalizedHeader === "faction" ||
+          normalizedHeader === "archetype" ||
+          normalizedHeader === "status"
+        ) {
+          continue;
+        }
+        const byName = definitionByName.get(normalizedHeader);
+        if (!byName || usedDefinitionIds.has(byName.id)) continue;
+        resolvedAttributeColumns.push({
+          header: originalHeader,
+          slug: byName.slug.trim().toLowerCase(),
+          definition: byName,
+        });
+        usedDefinitionIds.add(byName.id);
+      }
+      const validAttributeColumns = resolvedAttributeColumns;
+
+      const optionLabelMapByDefinition = new Map<string, Map<string, string>>();
+      for (const def of customFieldDefinitions) {
+        const map = new Map<string, string>();
+        for (const option of def.options) {
+          map.set(option.label.trim().toLowerCase(), option.id);
+        }
+        optionLabelMapByDefinition.set(def.id, map);
+      }
+
+      const existingEntities = await ctx.db.gameEntity.findMany({
+        where: { gameId: input.gameId },
+        select: { id: true, name: true },
+      });
+      const entityIdByName = new Map(existingEntities.map((e) => [e.name.trim().toLowerCase(), e.id] as const));
+      const entityIdSet = new Set(existingEntities.map((e) => e.id));
+
+      const errors: string[] = [];
+      let imported = 0;
+      let updated = 0;
+      let updatedAttributes = 0;
+
+      await ctx.db.$transaction(async (tx) => {
+        for (let idx = 0; idx < records.length; idx++) {
+          const r = records[idx];
+          const row = idx + 2;
+
+          const name = r.name?.trim() ?? "";
+          if (!name) {
+            errors.push(`Row ${row}: name is required.`);
+            continue;
+          }
+
+          const rawType = (r.type ?? "CHARACTER").toUpperCase();
+          const type = VALID_ENTITY_TYPES.includes(rawType as any)
+            ? (rawType as (typeof VALID_ENTITY_TYPES)[number])
+            : "CHARACTER";
+
+          const rawStatus = (r.status ?? "DRAFT").toUpperCase();
+          if (rawStatus && !VALID_STATUSES.includes(rawStatus as any)) {
+            errors.push(`Row ${row}: invalid status "${r.status}".`);
+            continue;
+          }
+          const status = VALID_STATUSES.includes(rawStatus as any)
+            ? (rawStatus as (typeof VALID_STATUSES)[number])
+            : "DRAFT";
+
+          const candidateId = r.id?.trim();
+          let entityId =
+            (candidateId && entityIdSet.has(candidateId) ? candidateId : undefined) ??
+            entityIdByName.get(name.toLowerCase());
+
+          if (entityId) {
+            await tx.gameEntity.update({
+              where: { id: entityId },
+              data: {
+                name,
+                type,
+                faction: "faction" in r ? (r.faction?.trim() || null) : undefined,
+                archetype: "archetype" in r ? (r.archetype?.trim() || null) : undefined,
+                description: "description" in r ? (r.description?.trim() || null) : undefined,
+                status,
+              },
+            });
+            entityIdByName.set(name.toLowerCase(), entityId);
+            updated++;
+          } else {
+            const created = await tx.gameEntity.create({
+              data: {
+                gameId: input.gameId,
+                name,
+                type,
+                faction: r.faction?.trim() || null,
+                archetype: r.archetype?.trim() || null,
+                description: r.description?.trim() || null,
+                status,
+              },
+              select: { id: true },
+            });
+            entityId = created.id;
+            entityIdSet.add(created.id);
+            entityIdByName.set(name.toLowerCase(), created.id);
+            imported++;
+          }
+
+          for (const attrColumn of validAttributeColumns) {
+            const definition = attrColumn.definition;
+            const raw = r[attrColumn.header] ?? "";
+            const trimmed = raw.trim();
+
+            const value = await tx.customFieldValue.upsert({
+              where: {
+                definitionId_characterId: {
+                  definitionId: definition.id,
+                  characterId: entityId,
+                },
+              },
+              update: {
+                textValue:
+                  definition.fieldType === "TEXT" ||
+                  definition.fieldType === "TEXTAREA" ||
+                  definition.fieldType === "URL"
+                    ? (trimmed || null)
+                    : null,
+                numberValue:
+                  definition.fieldType === "NUMBER"
+                    ? (trimmed === "" ? null : Number.isFinite(Number(trimmed)) ? Number(trimmed) : null)
+                    : null,
+                booleanValue:
+                  definition.fieldType === "BOOLEAN"
+                    ? parseBooleanLike(trimmed)
+                    : null,
+                dateValue:
+                  definition.fieldType === "DATE"
+                    ? (trimmed ? new Date(trimmed) : null)
+                    : null,
+              },
+              create: {
+                definitionId: definition.id,
+                characterId: entityId,
+                textValue:
+                  definition.fieldType === "TEXT" ||
+                  definition.fieldType === "TEXTAREA" ||
+                  definition.fieldType === "URL"
+                    ? (trimmed || null)
+                    : null,
+                numberValue:
+                  definition.fieldType === "NUMBER"
+                    ? (trimmed === "" ? null : Number.isFinite(Number(trimmed)) ? Number(trimmed) : null)
+                    : null,
+                booleanValue:
+                  definition.fieldType === "BOOLEAN"
+                    ? parseBooleanLike(trimmed)
+                    : null,
+                dateValue:
+                  definition.fieldType === "DATE"
+                    ? (trimmed ? new Date(trimmed) : null)
+                    : null,
+              },
+              select: { id: true },
+            });
+
+            if (definition.fieldType === "SELECT" || definition.fieldType === "MULTI_SELECT") {
+              const optionMap = optionLabelMapByDefinition.get(definition.id) ?? new Map<string, string>();
+              const labels = trimmed ? trimmed.split("|").map((v) => v.trim()).filter(Boolean) : [];
+              const selectedOptionIds: string[] = [];
+              for (const label of labels) {
+                const optionId = optionMap.get(label.toLowerCase());
+                if (!optionId) {
+                  errors.push(`Row ${row}: unknown option "${label}" for attr:${definition.slug}`);
+                  continue;
+                }
+                selectedOptionIds.push(optionId);
+              }
+              await tx.customFieldValueOption.deleteMany({ where: { valueId: value.id } });
+              if (selectedOptionIds.length > 0) {
+                await tx.customFieldValueOption.createMany({
+                  data: selectedOptionIds.map((optionId) => ({ valueId: value.id, optionId })),
+                });
+              }
+            }
+            updatedAttributes++;
+          }
+        }
+      }, { timeout: 60000, maxWait: 10000 });
+
+      if (errors.length > 0) {
+        return {
+          imported,
+          updated,
+          updatedAttributes,
+          warnings: errors.slice(0, 20),
+        };
+      }
+
+      return { imported, updated, updatedAttributes };
     }),
 
   exportRelationships: protectedProcedure
@@ -824,7 +1014,7 @@ export const csvRouter = router({
 
           updated++;
         }
-      }, { timeout: 30000, maxWait: 10000 });
+      }, { timeout: 120000, maxWait: 15000 });
 
       return {
         updated,
