@@ -13,7 +13,17 @@ const RELATIONSHIP_HEADERS = [
   "intensity",
   "bidirectional",
  ] as const;
-const MATRIX_EXPORT_FIELDS = ["id", "name", "description", "type", "plotlines", "attributes"] as const;
+const MATRIX_EXPORT_FIELDS = [
+  "id",
+  "name",
+  "description",
+  "type",
+  "faction",
+  "archetype",
+  "status",
+  "plotlines",
+  "attributes",
+] as const;
 
 const VALID_ENTITY_TYPES = ["CHARACTER", "NPC"] as const;
 const VALID_RELATIONSHIP_TYPES = [
@@ -328,7 +338,9 @@ export const csvRouter = router({
       const includePlotlines = selectedFields.includes("plotlines");
       const includeAttributes = selectedFields.includes("attributes");
       const fixedHeaders = selectedFields.filter(
-        (field): field is "id" | "name" | "description" | "type" =>
+        (
+          field
+        ): field is "id" | "name" | "description" | "type" | "faction" | "archetype" | "status" =>
           field !== "plotlines" && field !== "attributes"
       );
       const plotlineHeaders = includePlotlines
@@ -348,6 +360,9 @@ export const csvRouter = router({
           name: e.name,
           description: e.description ?? "",
           type: e.type,
+          faction: e.faction ?? "",
+          archetype: e.archetype ?? "",
+          status: e.status,
         };
         const fixed = fixedHeaders.map((field) => fieldMap[field]);
         const plotlineCells = includePlotlines
@@ -412,8 +427,12 @@ export const csvRouter = router({
       }
 
       const headers = Object.keys(first);
+      const normalizedHeaderToOriginal = new Map<string, string>();
+      for (const header of headers) {
+        normalizedHeaderToOriginal.set(header.trim().toLowerCase(), header);
+      }
       const plotlineColumns: { header: string; plotlineId: string }[] = [];
-      const attributeColumns: { header: string; slug: string }[] = [];
+      const explicitAttributeColumns: { header: string; slug: string }[] = [];
       for (const h of headers) {
         const bracketMatch = h.match(/\[plotline:([^\]]+)\]/);
         if (bracketMatch) {
@@ -426,7 +445,7 @@ export const csvRouter = router({
         }
         const attrMatch = h.match(/^attr(?:ibute)?:(.+)$/);
         if (attrMatch) {
-          attributeColumns.push({ header: h, slug: attrMatch[1].trim().toLowerCase() });
+          explicitAttributeColumns.push({ header: h, slug: attrMatch[1].trim().toLowerCase() });
         }
       }
 
@@ -457,9 +476,37 @@ export const csvRouter = router({
       const definitionBySlug = new Map(
         customFieldDefinitions.map((def) => [def.slug.trim().toLowerCase(), def] as const)
       );
-      const validAttributeColumns = attributeColumns
-        .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) }))
+      const definitionByName = new Map(
+        customFieldDefinitions.map((def) => [def.name.trim().toLowerCase(), def] as const)
+      );
+      const resolvedAttributeColumns = explicitAttributeColumns
+        .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) || definitionByName.get(col.slug) }))
         .filter((col): col is { header: string; slug: string; definition: (typeof customFieldDefinitions)[number] } => !!col.definition);
+      const usedDefinitionIds = new Set(resolvedAttributeColumns.map((col) => col.definition.id));
+      for (const [normalizedHeader, originalHeader] of normalizedHeaderToOriginal.entries()) {
+        if (
+          normalizedHeader === "id" ||
+          normalizedHeader === "name" ||
+          normalizedHeader === "description" ||
+          normalizedHeader === "type" ||
+          normalizedHeader === "faction" ||
+          normalizedHeader === "archetype" ||
+          normalizedHeader === "status" ||
+          normalizedHeader.startsWith("plotline:")
+        ) {
+          continue;
+        }
+        if (normalizedHeader.includes("[plotline:")) continue;
+        const byName = definitionByName.get(normalizedHeader);
+        if (!byName || usedDefinitionIds.has(byName.id)) continue;
+        resolvedAttributeColumns.push({
+          header: originalHeader,
+          slug: byName.slug.trim().toLowerCase(),
+          definition: byName,
+        });
+        usedDefinitionIds.add(byName.id);
+      }
+      const validAttributeColumns = resolvedAttributeColumns;
       const optionLabelMapByDefinition = new Map<string, Map<string, string>>();
       for (const def of customFieldDefinitions) {
         const map = new Map<string, string>();
@@ -522,6 +569,18 @@ export const csvRouter = router({
           if ("description" in r)
             updateData.description = r.description?.trim() || null;
           if (rawType) updateData.type = rawType;
+          if ("faction" in r) updateData.faction = r.faction?.trim() || null;
+          if ("archetype" in r) updateData.archetype = r.archetype?.trim() || null;
+          if ("status" in r) {
+            const rawStatus = (r.status ?? "").toUpperCase();
+            if (rawStatus && !VALID_STATUSES.includes(rawStatus as any)) {
+              errors.push(
+                `Row ${row}: invalid status "${r.status}", must be DRAFT, IN_PROGRESS or READY.`
+              );
+              continue;
+            }
+            if (rawStatus) updateData.status = rawStatus;
+          }
 
           if (Object.keys(updateData).length > 0) {
             await tx.gameEntity.update({
