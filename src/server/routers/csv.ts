@@ -13,7 +13,7 @@ const RELATIONSHIP_HEADERS = [
   "intensity",
   "bidirectional",
  ] as const;
-const MATRIX_EXPORT_FIELDS = ["id", "name", "description", "type", "plotlines"] as const;
+const MATRIX_EXPORT_FIELDS = ["id", "name", "description", "type", "plotlines", "attributes"] as const;
 
 const VALID_ENTITY_TYPES = ["CHARACTER", "NPC"] as const;
 const VALID_RELATIONSHIP_TYPES = [
@@ -36,6 +36,15 @@ function extractPlotlineNamesFromDescription(description: string | undefined): s
     names.add(normalizedWhitespace);
   }
   return Array.from(names);
+}
+
+function parseBooleanLike(value: string | undefined): boolean | null {
+  if (value == null) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  return null;
 }
 
 export const csvRouter = router({
@@ -289,6 +298,24 @@ export const csvRouter = router({
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true },
       });
+      const customFieldDefinitions = await ctx.db.customFieldDefinition.findMany({
+        where: { gameId: game.id },
+        include: {
+          options: {
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, label: true },
+          },
+        },
+        orderBy: { sortOrder: "asc" },
+      });
+      const customFieldValues = await ctx.db.customFieldValue.findMany({
+        where: { character: { gameId: game.id } },
+        include: { selectedOptions: { include: { option: true } } },
+      });
+      const valueByCharacterAndDefinition = new Map<string, (typeof customFieldValues)[number]>();
+      for (const value of customFieldValues) {
+        valueByCharacterAndDefinition.set(`${value.characterId}:${value.definitionId}`, value);
+      }
 
       const selectedFields = input.fields?.length ? input.fields : [...MATRIX_EXPORT_FIELDS];
       if (selectedFields.length === 0) {
@@ -299,13 +326,18 @@ export const csvRouter = router({
       }
 
       const includePlotlines = selectedFields.includes("plotlines");
+      const includeAttributes = selectedFields.includes("attributes");
       const fixedHeaders = selectedFields.filter(
-        (field): field is "id" | "name" | "description" | "type" => field !== "plotlines"
+        (field): field is "id" | "name" | "description" | "type" =>
+          field !== "plotlines" && field !== "attributes"
       );
       const plotlineHeaders = includePlotlines
         ? plotlines.map((p) => `${p.name} [plotline:${p.id}]`)
         : [];
-      const headers = [...fixedHeaders, ...plotlineHeaders];
+      const attributeHeaders = includeAttributes
+        ? customFieldDefinitions.map((def) => `attr:${def.slug}`)
+        : [];
+      const headers = [...fixedHeaders, ...plotlineHeaders, ...attributeHeaders];
 
       const rows = entities.map((e) => {
         const assignedIds = new Set(
@@ -321,7 +353,25 @@ export const csvRouter = router({
         const plotlineCells = includePlotlines
           ? plotlines.map((p) => (assignedIds.has(p.id) ? "1" : "0"))
           : [];
-        return [...fixed, ...plotlineCells];
+        const attributeCells = includeAttributes
+          ? customFieldDefinitions.map((def) => {
+              const stored = valueByCharacterAndDefinition.get(`${e.id}:${def.id}`);
+              if (!stored) return "";
+              if (def.fieldType === "NUMBER") return stored.numberValue != null ? String(stored.numberValue) : "";
+              if (def.fieldType === "BOOLEAN") {
+                return stored.booleanValue == null ? "" : stored.booleanValue ? "true" : "false";
+              }
+              if (def.fieldType === "DATE") {
+                return stored.dateValue ? stored.dateValue.toISOString().slice(0, 10) : "";
+              }
+              if (def.fieldType === "SELECT" || def.fieldType === "MULTI_SELECT") {
+                const labels = stored.selectedOptions.map((so) => so.option.label);
+                return labels.join("|");
+              }
+              return stored.textValue ?? "";
+            })
+          : [];
+        return [...fixed, ...plotlineCells, ...attributeCells];
       });
 
       return { csv: generateCsv(headers, rows), count: entities.length };
@@ -363,6 +413,7 @@ export const csvRouter = router({
 
       const headers = Object.keys(first);
       const plotlineColumns: { header: string; plotlineId: string }[] = [];
+      const attributeColumns: { header: string; slug: string }[] = [];
       for (const h of headers) {
         const bracketMatch = h.match(/\[plotline:([^\]]+)\]/);
         if (bracketMatch) {
@@ -372,6 +423,10 @@ export const csvRouter = router({
         const directMatch = h.match(/^plotline:(.+)$/);
         if (directMatch) {
           plotlineColumns.push({ header: h, plotlineId: directMatch[1] });
+        }
+        const attrMatch = h.match(/^attr(?:ibute)?:(.+)$/);
+        if (attrMatch) {
+          attributeColumns.push({ header: h, slug: attrMatch[1].trim().toLowerCase() });
         }
       }
 
@@ -393,12 +448,33 @@ export const csvRouter = router({
         select: { id: true },
       });
       const existingIds = new Set(existingEntities.map((e) => e.id));
+      const customFieldDefinitions = await ctx.db.customFieldDefinition.findMany({
+        where: { gameId: game.id },
+        include: {
+          options: { select: { id: true, label: true } },
+        },
+      });
+      const definitionBySlug = new Map(
+        customFieldDefinitions.map((def) => [def.slug.trim().toLowerCase(), def] as const)
+      );
+      const validAttributeColumns = attributeColumns
+        .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) }))
+        .filter((col): col is { header: string; slug: string; definition: (typeof customFieldDefinitions)[number] } => !!col.definition);
+      const optionLabelMapByDefinition = new Map<string, Map<string, string>>();
+      for (const def of customFieldDefinitions) {
+        const map = new Map<string, string>();
+        for (const option of def.options) {
+          map.set(option.label.trim().toLowerCase(), option.id);
+        }
+        optionLabelMapByDefinition.set(def.id, map);
+      }
 
       const errors: string[] = [];
       const skipped: string[] = [];
       let updated = 0;
       let createdPlotlines = 0;
       let linkedFromDescription = 0;
+      let updatedAttributes = 0;
 
       await ctx.db.$transaction(async (tx) => {
         for (let idx = 0; idx < records.length; idx++) {
@@ -519,6 +595,161 @@ export const csvRouter = router({
             }
           }
 
+          if (validAttributeColumns.length > 0) {
+            for (const attrColumn of validAttributeColumns) {
+              const raw = r[attrColumn.header] ?? "";
+              const trimmed = raw.trim();
+              const definition = attrColumn.definition;
+              const existingValue = await tx.customFieldValue.findUnique({
+                where: {
+                  definitionId_characterId: {
+                    definitionId: definition.id,
+                    characterId: entityId,
+                  },
+                },
+              });
+
+              let valueId: string;
+              if (definition.fieldType === "NUMBER") {
+                const numberValue =
+                  trimmed === "" ? null : Number.isFinite(Number(trimmed)) ? Number(trimmed) : null;
+                if (trimmed !== "" && numberValue == null) {
+                  errors.push(`Row ${row}: invalid number for attr:${definition.slug} => "${raw}"`);
+                  continue;
+                }
+                if (existingValue) {
+                  await tx.customFieldValue.update({
+                    where: { id: existingValue.id },
+                    data: { textValue: null, numberValue, booleanValue: null, dateValue: null },
+                  });
+                  valueId = existingValue.id;
+                } else {
+                  const created = await tx.customFieldValue.create({
+                    data: {
+                      definitionId: definition.id,
+                      characterId: entityId,
+                      textValue: null,
+                      numberValue,
+                      booleanValue: null,
+                      dateValue: null,
+                    },
+                  });
+                  valueId = created.id;
+                }
+              } else if (definition.fieldType === "BOOLEAN") {
+                const booleanValue = parseBooleanLike(trimmed);
+                if (trimmed !== "" && booleanValue == null) {
+                  errors.push(`Row ${row}: invalid boolean for attr:${definition.slug} => "${raw}"`);
+                  continue;
+                }
+                if (existingValue) {
+                  await tx.customFieldValue.update({
+                    where: { id: existingValue.id },
+                    data: { textValue: null, numberValue: null, booleanValue, dateValue: null },
+                  });
+                  valueId = existingValue.id;
+                } else {
+                  const created = await tx.customFieldValue.create({
+                    data: {
+                      definitionId: definition.id,
+                      characterId: entityId,
+                      textValue: null,
+                      numberValue: null,
+                      booleanValue,
+                      dateValue: null,
+                    },
+                  });
+                  valueId = created.id;
+                }
+              } else if (definition.fieldType === "DATE") {
+                const parsed = trimmed ? new Date(trimmed) : null;
+                if (trimmed && (!parsed || Number.isNaN(parsed.getTime()))) {
+                  errors.push(`Row ${row}: invalid date for attr:${definition.slug} => "${raw}"`);
+                  continue;
+                }
+                if (existingValue) {
+                  await tx.customFieldValue.update({
+                    where: { id: existingValue.id },
+                    data: { textValue: null, numberValue: null, booleanValue: null, dateValue: parsed },
+                  });
+                  valueId = existingValue.id;
+                } else {
+                  const created = await tx.customFieldValue.create({
+                    data: {
+                      definitionId: definition.id,
+                      characterId: entityId,
+                      textValue: null,
+                      numberValue: null,
+                      booleanValue: null,
+                      dateValue: parsed,
+                    },
+                  });
+                  valueId = created.id;
+                }
+              } else {
+                if (existingValue) {
+                  await tx.customFieldValue.update({
+                    where: { id: existingValue.id },
+                    data: {
+                      textValue:
+                        definition.fieldType === "TEXT" ||
+                        definition.fieldType === "TEXTAREA" ||
+                        definition.fieldType === "URL"
+                          ? (trimmed || null)
+                          : null,
+                      numberValue: null,
+                      booleanValue: null,
+                      dateValue: null,
+                    },
+                  });
+                  valueId = existingValue.id;
+                } else {
+                  const created = await tx.customFieldValue.create({
+                    data: {
+                      definitionId: definition.id,
+                      characterId: entityId,
+                      textValue:
+                        definition.fieldType === "TEXT" ||
+                        definition.fieldType === "TEXTAREA" ||
+                        definition.fieldType === "URL"
+                          ? (trimmed || null)
+                          : null,
+                      numberValue: null,
+                      booleanValue: null,
+                      dateValue: null,
+                    },
+                  });
+                  valueId = created.id;
+                }
+
+                if (definition.fieldType === "SELECT" || definition.fieldType === "MULTI_SELECT") {
+                  const optionMap = optionLabelMapByDefinition.get(definition.id) ?? new Map<string, string>();
+                  const labels = trimmed
+                    ? trimmed.split("|").map((v) => v.trim()).filter(Boolean)
+                    : [];
+                  const selectedOptionIds: string[] = [];
+                  for (const label of labels) {
+                    const optionId = optionMap.get(label.toLowerCase());
+                    if (!optionId) {
+                      errors.push(
+                        `Row ${row}: unknown option "${label}" for attr:${definition.slug}`
+                      );
+                      continue;
+                    }
+                    selectedOptionIds.push(optionId);
+                  }
+                  await tx.customFieldValueOption.deleteMany({ where: { valueId } });
+                  if (selectedOptionIds.length > 0) {
+                    await tx.customFieldValueOption.createMany({
+                      data: selectedOptionIds.map((optionId) => ({ valueId, optionId })),
+                    });
+                  }
+                }
+              }
+              updatedAttributes++;
+            }
+          }
+
           updated++;
         }
       });
@@ -529,6 +760,7 @@ export const csvRouter = router({
         errors: errors.length > 0 ? errors : undefined,
         createdPlotlines,
         linkedFromDescription,
+        updatedAttributes,
         totalRows: records.length,
       };
     }),

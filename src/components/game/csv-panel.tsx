@@ -47,6 +47,7 @@ const MATRIX_EXPORT_FIELD_OPTIONS = [
   { key: "description", label: "Description" },
   { key: "type", label: "Type (CHARACTER/NPC)" },
   { key: "plotlines", label: "All plotline matrix columns" },
+  { key: "attributes", label: "Custom attributes (attr:<slug>)" },
 ] as const;
 type CharacterExportField = (typeof CHARACTER_EXPORT_FIELD_OPTIONS)[number]["key"];
 type RelationshipExportField = (typeof RELATIONSHIP_EXPORT_FIELD_OPTIONS)[number]["key"];
@@ -121,6 +122,9 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
       }
       if (data.linkedFromDescription > 0) {
         additions.push(`linked ${data.linkedFromDescription} plotline assignments from description`);
+      }
+      if (data.updatedAttributes > 0) {
+        additions.push(`updated ${data.updatedAttributes} attributes`);
       }
       const additionsText = additions.length > 0 ? ` (${additions.join(", ")})` : "";
       setImportResult({
@@ -375,7 +379,7 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
                 <p>name, type, faction, archetype, description, status</p>
               ) : dataKind === "characters-matrix" ? (
                 <div>
-                  <p>id, name, description, type, + one column per plotline (1/0)</p>
+                  <p>id, name, description, type, + one column per plotline (1/0), optional attr:&lt;slug&gt; columns</p>
                   <p className="mt-1 text-zinc-600">
                     Edit and re-import to bulk-update characters and their plotline assignments.
                   </p>
@@ -408,6 +412,7 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
                   <p>Required column: <span className="text-amber-400">id</span> (character ID from export)</p>
                   <p>Editable: <span className="text-zinc-300">name</span>, <span className="text-zinc-300">description</span>, <span className="text-zinc-300">type</span> (CHARACTER / NPC)</p>
                   <p>Plotline columns: <span className="text-zinc-300">1</span> = assigned, <span className="text-zinc-300">0</span> = not assigned</p>
+                  <p>Attribute columns: <span className="text-zinc-300">attr:&lt;slug&gt;</span> (for custom fields from game settings)</p>
                   <p className="mt-1">
                     Auto-detect from description lines: <span className="text-zinc-300">Plotline: ...</span>, <span className="text-zinc-300">Сюжет: ...</span>, or <span className="text-zinc-300">Завязка: ...</span>
                   </p>
