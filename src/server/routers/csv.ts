@@ -468,6 +468,21 @@ export const csvRouter = router({
         }
         optionLabelMapByDefinition.set(def.id, map);
       }
+      const definitionIds = customFieldDefinitions.map((def) => def.id);
+      const existingAttributeValues =
+        definitionIds.length > 0
+          ? await ctx.db.customFieldValue.findMany({
+              where: {
+                characterId: { in: Array.from(existingIds) },
+                definitionId: { in: definitionIds },
+              },
+              select: { id: true, characterId: true, definitionId: true },
+            })
+          : [];
+      const customFieldValueIdByKey = new Map<string, string>();
+      for (const value of existingAttributeValues) {
+        customFieldValueIdByKey.set(`${value.characterId}:${value.definitionId}`, value.id);
+      }
 
       const errors: string[] = [];
       const skipped: string[] = [];
@@ -600,14 +615,8 @@ export const csvRouter = router({
               const raw = r[attrColumn.header] ?? "";
               const trimmed = raw.trim();
               const definition = attrColumn.definition;
-              const existingValue = await tx.customFieldValue.findUnique({
-                where: {
-                  definitionId_characterId: {
-                    definitionId: definition.id,
-                    characterId: entityId,
-                  },
-                },
-              });
+              const valueKey = `${entityId}:${definition.id}`;
+              const existingValueId = customFieldValueIdByKey.get(valueKey);
 
               let valueId: string;
               if (definition.fieldType === "NUMBER") {
@@ -617,12 +626,12 @@ export const csvRouter = router({
                   errors.push(`Row ${row}: invalid number for attr:${definition.slug} => "${raw}"`);
                   continue;
                 }
-                if (existingValue) {
+                if (existingValueId) {
                   await tx.customFieldValue.update({
-                    where: { id: existingValue.id },
+                    where: { id: existingValueId },
                     data: { textValue: null, numberValue, booleanValue: null, dateValue: null },
                   });
-                  valueId = existingValue.id;
+                  valueId = existingValueId;
                 } else {
                   const created = await tx.customFieldValue.create({
                     data: {
@@ -635,6 +644,7 @@ export const csvRouter = router({
                     },
                   });
                   valueId = created.id;
+                  customFieldValueIdByKey.set(valueKey, created.id);
                 }
               } else if (definition.fieldType === "BOOLEAN") {
                 const booleanValue = parseBooleanLike(trimmed);
@@ -642,12 +652,12 @@ export const csvRouter = router({
                   errors.push(`Row ${row}: invalid boolean for attr:${definition.slug} => "${raw}"`);
                   continue;
                 }
-                if (existingValue) {
+                if (existingValueId) {
                   await tx.customFieldValue.update({
-                    where: { id: existingValue.id },
+                    where: { id: existingValueId },
                     data: { textValue: null, numberValue: null, booleanValue, dateValue: null },
                   });
-                  valueId = existingValue.id;
+                  valueId = existingValueId;
                 } else {
                   const created = await tx.customFieldValue.create({
                     data: {
@@ -660,6 +670,7 @@ export const csvRouter = router({
                     },
                   });
                   valueId = created.id;
+                  customFieldValueIdByKey.set(valueKey, created.id);
                 }
               } else if (definition.fieldType === "DATE") {
                 const parsed = trimmed ? new Date(trimmed) : null;
@@ -667,12 +678,12 @@ export const csvRouter = router({
                   errors.push(`Row ${row}: invalid date for attr:${definition.slug} => "${raw}"`);
                   continue;
                 }
-                if (existingValue) {
+                if (existingValueId) {
                   await tx.customFieldValue.update({
-                    where: { id: existingValue.id },
+                    where: { id: existingValueId },
                     data: { textValue: null, numberValue: null, booleanValue: null, dateValue: parsed },
                   });
-                  valueId = existingValue.id;
+                  valueId = existingValueId;
                 } else {
                   const created = await tx.customFieldValue.create({
                     data: {
@@ -685,11 +696,12 @@ export const csvRouter = router({
                     },
                   });
                   valueId = created.id;
+                  customFieldValueIdByKey.set(valueKey, created.id);
                 }
               } else {
-                if (existingValue) {
+                if (existingValueId) {
                   await tx.customFieldValue.update({
-                    where: { id: existingValue.id },
+                    where: { id: existingValueId },
                     data: {
                       textValue:
                         definition.fieldType === "TEXT" ||
@@ -702,7 +714,7 @@ export const csvRouter = router({
                       dateValue: null,
                     },
                   });
-                  valueId = existingValue.id;
+                  valueId = existingValueId;
                 } else {
                   const created = await tx.customFieldValue.create({
                     data: {
@@ -720,6 +732,7 @@ export const csvRouter = router({
                     },
                   });
                   valueId = created.id;
+                  customFieldValueIdByKey.set(valueKey, created.id);
                 }
 
                 if (definition.fieldType === "SELECT" || definition.fieldType === "MULTI_SELECT") {
@@ -752,7 +765,7 @@ export const csvRouter = router({
 
           updated++;
         }
-      });
+      }, { timeout: 30000, maxWait: 10000 });
 
       return {
         updated,
