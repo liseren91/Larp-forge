@@ -57,6 +57,16 @@ function parseBooleanLike(value: string | undefined): boolean | null {
   return null;
 }
 
+const BASE_CHARACTER_COLUMNS = new Set([
+  "id",
+  "name",
+  "type",
+  "faction",
+  "archetype",
+  "description",
+  "status",
+]);
+
 export const csvRouter = router({
   exportCharacters: protectedProcedure
     .input(
@@ -148,17 +158,12 @@ export const csvRouter = router({
       const resolvedAttributeColumns = explicitAttributeColumns
         .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) || definitionByName.get(col.slug) }))
         .filter((col): col is { header: string; slug: string; definition: (typeof customFieldDefinitions)[number] } => !!col.definition);
+      const ignoredExplicitAttributeColumns = explicitAttributeColumns
+        .filter((col) => !definitionBySlug.get(col.slug) && !definitionByName.get(col.slug))
+        .map((col) => col.header);
       const usedDefinitionIds = new Set(resolvedAttributeColumns.map((col) => col.definition.id));
       for (const [normalizedHeader, originalHeader] of normalizedHeaderToOriginal.entries()) {
-        if (
-          normalizedHeader === "id" ||
-          normalizedHeader === "name" ||
-          normalizedHeader === "description" ||
-          normalizedHeader === "type" ||
-          normalizedHeader === "faction" ||
-          normalizedHeader === "archetype" ||
-          normalizedHeader === "status"
-        ) {
+        if (BASE_CHARACTER_COLUMNS.has(normalizedHeader)) {
           continue;
         }
         const byName = definitionByName.get(normalizedHeader);
@@ -171,6 +176,14 @@ export const csvRouter = router({
         usedDefinitionIds.add(byName.id);
       }
       const validAttributeColumns = resolvedAttributeColumns;
+      const recognizedAttributeColumnHeaders = validAttributeColumns.map((col) => col.header);
+      const recognizedAttributeHeaderSet = new Set(recognizedAttributeColumnHeaders.map((h) => h.toLowerCase()));
+      const ignoredColumns = headers.filter((header) => {
+        const normalized = header.trim().toLowerCase();
+        if (BASE_CHARACTER_COLUMNS.has(normalized)) return false;
+        if (recognizedAttributeHeaderSet.has(normalized)) return false;
+        return true;
+      });
 
       const optionLabelMapByDefinition = new Map<string, Map<string, string>>();
       for (const def of customFieldDefinitions) {
@@ -343,10 +356,24 @@ export const csvRouter = router({
           updated,
           updatedAttributes,
           warnings: errors.slice(0, 20),
+          columnReport: {
+            recognizedAttributeColumns: recognizedAttributeColumnHeaders,
+            ignoredAttributeColumns: ignoredExplicitAttributeColumns,
+            ignoredColumns,
+          },
         };
       }
 
-      return { imported, updated, updatedAttributes };
+      return {
+        imported,
+        updated,
+        updatedAttributes,
+        columnReport: {
+          recognizedAttributeColumns: recognizedAttributeColumnHeaders,
+          ignoredAttributeColumns: ignoredExplicitAttributeColumns,
+          ignoredColumns,
+        },
+      };
     }),
 
   exportRelationships: protectedProcedure
@@ -651,6 +678,9 @@ export const csvRouter = router({
       const validPlotlineColumns = plotlineColumns.filter((pc) =>
         validPlotlineIds.has(pc.plotlineId)
       );
+      const ignoredPlotlineColumns = plotlineColumns
+        .filter((pc) => !validPlotlineIds.has(pc.plotlineId))
+        .map((pc) => pc.header);
 
       const existingEntities = await ctx.db.gameEntity.findMany({
         where: { gameId: game.id },
@@ -672,6 +702,9 @@ export const csvRouter = router({
       const resolvedAttributeColumns = explicitAttributeColumns
         .map((col) => ({ ...col, definition: definitionBySlug.get(col.slug) || definitionByName.get(col.slug) }))
         .filter((col): col is { header: string; slug: string; definition: (typeof customFieldDefinitions)[number] } => !!col.definition);
+      const ignoredExplicitAttributeColumns = explicitAttributeColumns
+        .filter((col) => !definitionBySlug.get(col.slug) && !definitionByName.get(col.slug))
+        .map((col) => col.header);
       const usedDefinitionIds = new Set(resolvedAttributeColumns.map((col) => col.definition.id));
       for (const [normalizedHeader, originalHeader] of normalizedHeaderToOriginal.entries()) {
         if (
@@ -697,6 +730,19 @@ export const csvRouter = router({
         usedDefinitionIds.add(byName.id);
       }
       const validAttributeColumns = resolvedAttributeColumns;
+      const recognizedAttributeColumnHeaders = validAttributeColumns.map((col) => col.header);
+      const recognizedPlotlineColumnHeaders = validPlotlineColumns.map((col) => col.header);
+      const recognizedAttributeHeaderSet = new Set(recognizedAttributeColumnHeaders.map((h) => h.toLowerCase()));
+      const recognizedPlotlineHeaderSet = new Set(recognizedPlotlineColumnHeaders.map((h) => h.toLowerCase()));
+      const ignoredColumns = headers.filter((header) => {
+        const normalized = header.trim().toLowerCase();
+        if (BASE_CHARACTER_COLUMNS.has(normalized)) return false;
+        if (recognizedAttributeHeaderSet.has(normalized)) return false;
+        if (recognizedPlotlineHeaderSet.has(normalized)) return false;
+        if (normalized.startsWith("plotline:")) return false;
+        if (normalized.includes("[plotline:")) return false;
+        return true;
+      });
       const optionLabelMapByDefinition = new Map<string, Map<string, string>>();
       for (const def of customFieldDefinitions) {
         const map = new Map<string, string>();
@@ -1024,6 +1070,13 @@ export const csvRouter = router({
         linkedFromDescription,
         updatedAttributes,
         totalRows: records.length,
+        columnReport: {
+          recognizedPlotlineColumns: recognizedPlotlineColumnHeaders,
+          ignoredPlotlineColumns,
+          recognizedAttributeColumns: recognizedAttributeColumnHeaders,
+          ignoredAttributeColumns: ignoredExplicitAttributeColumns,
+          ignoredColumns,
+        },
       };
     }),
 });

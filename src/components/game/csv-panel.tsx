@@ -97,10 +97,27 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
       if ((data as any).updated) details.push(`updated ${(data as any).updated}`);
       if ((data as any).updatedAttributes) details.push(`updated ${(data as any).updatedAttributes} attributes`);
       const detailsText = details.length > 0 ? ` (${details.join(", ")})` : "";
+      const reportWarnings: string[] = [];
+      const charsReport = (data as any).columnReport;
+      if (charsReport?.recognizedAttributeColumns?.length) {
+        reportWarnings.push(
+          `Recognized attribute columns: ${charsReport.recognizedAttributeColumns.join(", ")}`
+        );
+      }
+      if (charsReport?.ignoredAttributeColumns?.length) {
+        reportWarnings.push(
+          `Ignored attribute columns: ${charsReport.ignoredAttributeColumns.join(", ")}`
+        );
+      }
+      if (charsReport?.ignoredColumns?.length) {
+        reportWarnings.push(
+          `Ignored columns: ${charsReport.ignoredColumns.join(", ")}`
+        );
+      }
       setImportResult({
         success: true,
         message: `Imported ${data.imported} characters${detailsText}.`,
-        warnings: (data as any).warnings,
+        warnings: [...((data as any).warnings ?? []), ...reportWarnings],
       });
       onImported();
     },
@@ -127,6 +144,31 @@ export function CsvPanel({ open, onClose, gameId, onImported }: Props) {
         ...(data.skipped ?? []),
         ...(data.errors ?? []),
       ];
+      if (data.columnReport?.recognizedPlotlineColumns?.length) {
+        warnings.push(
+          `Recognized plotline columns: ${data.columnReport.recognizedPlotlineColumns.join(", ")}`
+        );
+      }
+      if (data.columnReport?.ignoredPlotlineColumns?.length) {
+        warnings.push(
+          `Ignored plotline columns: ${data.columnReport.ignoredPlotlineColumns.join(", ")}`
+        );
+      }
+      if (data.columnReport?.recognizedAttributeColumns?.length) {
+        warnings.push(
+          `Recognized attribute columns: ${data.columnReport.recognizedAttributeColumns.join(", ")}`
+        );
+      }
+      if (data.columnReport?.ignoredAttributeColumns?.length) {
+        warnings.push(
+          `Ignored attribute columns: ${data.columnReport.ignoredAttributeColumns.join(", ")}`
+        );
+      }
+      if (data.columnReport?.ignoredColumns?.length) {
+        warnings.push(
+          `Ignored columns: ${data.columnReport.ignoredColumns.join(", ")}`
+        );
+      }
       const additions: string[] = [];
       if (data.createdPlotlines > 0) {
         additions.push(`created ${data.createdPlotlines} new plotlines`);
