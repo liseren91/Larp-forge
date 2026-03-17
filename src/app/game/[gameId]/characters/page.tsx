@@ -16,6 +16,7 @@ import { CharacterDetail } from "@/components/game/character-detail";
 import { MassCreatePanel } from "@/components/game/mass-create-panel";
 import { StoryImportPanel } from "@/components/game/story-import-panel";
 import { CsvPanel } from "@/components/game/csv-panel";
+import { DuplicateMergePanel } from "@/components/game/duplicate-merge-panel";
 
 type NewCharacter = {
   name: string;
@@ -35,9 +36,11 @@ export default function CharactersPage() {
   const [showMassCreate, setShowMassCreate] = useState(false);
   const [showStoryImport, setShowStoryImport] = useState(false);
   const [showCsv, setShowCsv] = useState(false);
+  const [showDuplicateMerge, setShowDuplicateMerge] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [newChar, setNewChar] = useState<NewCharacter>(emptyChar);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
 
   const characters = trpc.character.list.useQuery({ gameId });
@@ -52,6 +55,16 @@ export default function CharactersPage() {
     onSuccess: () => {
       setSelectedId(null);
       characters.refetch();
+    },
+  });
+  const deleteManyChars = trpc.character.deleteMany.useMutation({
+    onSuccess: (data) => {
+      if (selectedId && selectedIds.includes(selectedId)) {
+        setSelectedId(null);
+      }
+      setSelectedIds([]);
+      characters.refetch();
+      alert(`Deleted ${data.deleted} characters.`);
     },
   });
 
@@ -87,6 +100,12 @@ export default function CharactersPage() {
       setSelectedId(openId);
     }
   }, [openId, characters.data]);
+
+  useEffect(() => {
+    if (!characters.data) return;
+    const existing = new Set(characters.data.map((c) => c.id));
+    setSelectedIds((prev) => prev.filter((id) => existing.has(id)));
+  }, [characters.data]);
 
   return (
     <div className="flex h-screen">
@@ -139,6 +158,16 @@ export default function CharactersPage() {
                     >
                       <FileSpreadsheet size={14} /> CSV import/export
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDuplicateMerge(true);
+                        setShowMoreMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+                    >
+                      <Link2 size={14} /> Merge duplicates
+                    </button>
                   </div>
                 )}
               </div>
@@ -149,6 +178,40 @@ export default function CharactersPage() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
+          <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={filtered != null && filtered.length > 0 && filtered.every((c) => selectedIds.includes(c.id))}
+                onChange={(e) => {
+                  if (!filtered) return;
+                  if (e.target.checked) {
+                    setSelectedIds(Array.from(new Set([...selectedIds, ...filtered.map((c) => c.id)])));
+                  } else {
+                    const filteredSet = new Set(filtered.map((c) => c.id));
+                    setSelectedIds(selectedIds.filter((id) => !filteredSet.has(id)));
+                  }
+                }}
+                className="h-3.5 w-3.5 accent-amber-500"
+              />
+              Select all visible
+            </label>
+            {selectedIds.length > 0 && (
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  const count = selectedIds.length;
+                  if (!confirm(`Delete ${count} selected characters? This action cannot be undone.`)) return;
+                  deleteManyChars.mutate({ gameId, ids: selectedIds });
+                }}
+                disabled={deleteManyChars.isPending}
+              >
+                <Trash2 size={12} className="mr-1" />
+                {deleteManyChars.isPending ? "Deleting..." : `Delete selected (${selectedIds.length})`}
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -168,7 +231,22 @@ export default function CharactersPage() {
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">{char.name}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(char.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds((prev) => [...prev, char.id]);
+                      } else {
+                        setSelectedIds((prev) => prev.filter((id) => id !== char.id));
+                      }
+                    }}
+                    className="h-3.5 w-3.5 accent-amber-500"
+                  />
+                  <span className="font-medium text-sm truncate">{char.name}</span>
+                </div>
                 <Badge color={char.type === "NPC" ? "purple" : "zinc"} className="text-[10px]">
                   {char.type}
                 </Badge>
@@ -241,6 +319,13 @@ export default function CharactersPage() {
         onClose={() => setShowCsv(false)}
         gameId={gameId}
         onImported={() => characters.refetch()}
+      />
+
+      <DuplicateMergePanel
+        open={showDuplicateMerge}
+        onClose={() => setShowDuplicateMerge(false)}
+        gameId={gameId}
+        onMerged={() => characters.refetch()}
       />
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Character">
